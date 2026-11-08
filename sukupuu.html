@@ -7,6 +7,9 @@
 <title>Minun sukupuuni</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
+<!-- optional: the board's Apps Script address (shared family tree and Drive photos) -->
+<script src="config.js"></script>
+<script>if(typeof BACKEND_URL==="undefined")var BACKEND_URL="";</script>
 <style>
 /* Layout: one full-screen illustrated tree. Ancestors in the branches, the child at the trunk.
    Games reuse the same tree; a prompt bubble on top, big round buttons at the bottom. Single bright daytime look. */
@@ -144,6 +147,17 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .small{font-size:14px;padding:6px 12px;min-height:38px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:50;background:var(--ink);color:#fff;padding:10px 18px;border-radius:14px;font-size:16px}
 .example{position:fixed;left:50%;transform:translateX(-50%);top:max(14px,env(safe-area-inset-top,0px));z-index:4;background:rgba(255,255,255,.9);border-radius:999px;padding:6px 14px;font-size:clamp(12px,2vh,16px);color:var(--soft);font-weight:600}
+.ph,.big,.piece,.pthumb{background-position:center 30%!important}
+.chooser{position:fixed;inset:0;z-index:45;background:rgba(36,50,58,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.chin{background:#fff;border-radius:20px;width:min(760px,100%);max-height:92vh;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+.chhead{display:flex;align-items:center;gap:10px}.chhead h2{flex:1;margin:0;font-size:22px}
+.chsub{margin:0;color:var(--soft);font-size:15px;line-height:1.4}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.pg{aspect-ratio:1;border-radius:14px;border:4px solid transparent;background:#eef3f6 center/cover no-repeat;position:relative;padding:0;overflow:hidden}
+.pg span{position:absolute;left:4px;right:4px;bottom:4px;font-size:11px;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg.ok span{display:none}
+.pg.err::after{content:"⚠️";position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.pg.sel{border-color:var(--sideB)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -256,6 +270,7 @@ function hash(s){var h=7;s=String(s||"");for(var i=0;i<s.length;i++)h=(h*31+s.ch
 function ringColor(p){if(p.role==="me")return "var(--me)";if(p.role==="pet")return "var(--pet)";if(p.role==="sib")return "var(--me)";return p.side==="b"?"var(--sideB)":"var(--sideA)";}
 var avatarCache={};
 function avatar(p){
+  if(p.drive){if(PHOTOS[p.drive])return PHOTOS[p.drive];loadPhoto(p.drive,"l").catch(function(){});}
   if(p.photo)return p.photo;
   var key=p.role+"|"+p.call+"|"+p.name+"|"+(p.emoji||"");if(avatarCache[key])return avatarCache[key];
   var h=hash(p.name+p.call),svg;
@@ -386,11 +401,11 @@ window.addEventListener("resize",function(){clearTimeout(drawTree.t);drawTree.t=
    Modes
    ========================================================= */
 function setMode(m){
-  VIEW.mode=m;
+  var wasHome=VIEW.mode==="home";VIEW.mode=m;
   $("#menu").hidden=m!=="home";$("#homeBtn").hidden=m==="home";
   $("#prompt").hidden=m==="home";$("#dots").hidden=m==="home";
   $("#pick").hidden=m!=="pick";$("#tray").hidden=m!=="build";
-  if(m==="home"){VIEW.slots={};VIEW.round=null;}
+  if(m==="home"){VIEW.slots={};VIEW.round=null;if(!wasHome)setTimeout(pullTree,300);}
   drawTree();
 }
 function prompt(t,speak){$("#promptTx").textContent=t;if(speak!==false)say(t);}
@@ -634,7 +649,8 @@ function personHtml(p){
 }
 function drawEditor(){
   var e=$("#edit"),html='<div class="in"><div class="ehead"><h1>Sukupuun asetukset</h1><button class="btn primary" type="button" id="eDone">Valmis</button></div>';
-  if(FAM.example)html+='<div class="note">Nämä ovat <b>esimerkkihenkilöitä</b>. Vaihda tilalle oman perheenne nimet ja kuvat. Kuvat ja tiedot tallentuvat vain tämän laitteen selaimeen, eivät nettiin.</div>';
+  if(FAM.example)html+='<div class="note">Nämä ovat <b>esimerkkihenkilöitä</b>. Vaihda tilalle oman perheenne nimet ja kuvat. Napauta kuvaa vaihtaaksesi sen.</div>';
+  html+=syncSectionHtml();
   ROLE_INFO.forEach(function(g){
     var list=P().filter(function(p){return g.role?p.role===g.role:(p.side===g.side&&(p.role==="parent"||p.role==="grand"||p.role==="psib"));});
     if(g.side)list.sort(function(a,b){var o={parent:0,grand:1,psib:2};return o[a.role]-o[b.role];});
@@ -651,31 +667,34 @@ function drawEditor(){
   html+='<div class="grp"><h2>Varmuuskopio</h2><p style="margin:0;color:var(--soft)">Tiedot ovat vain tässä selaimessa. Tallenna varmuuskopio, niin perheen voi siirtää toiselle laitteelle tai palauttaa.</p><div class="prow"><button class="btn small" type="button" id="eExport">Tallenna varmuuskopio</button><button class="btn small" type="button" id="eImport">Palauta varmuuskopio</button><button class="btn danger small" type="button" id="eReset">Aloita alusta esimerkkiperheellä</button></div></div>';
   html+='</div>';
   e.innerHTML=html;
-  $("#eDone").onclick=function(){e.hidden=true;avatarCache={};drawTree();};
+  $("#eDone").onclick=function(){e.hidden=true;avatarCache={};drawTree();if(pushT)pushTree();};
+  var kg=$("#keyGo",e);if(kg)kg.onclick=function(){var v=$("#keyIn",e).value.trim();if(!v)return;try{localStorage.setItem("familyKey",v);}catch(err){}
+    SYNC.state="saving";api({op:"tree"}).then(function(){e.hidden=true;return pullTree();}).then(function(){openEditor();toast("Yhteinen sukupuu käytössä");},function(err){try{localStorage.removeItem("familyKey");}catch(x){}toast(errText(err));drawEditor();});};
   $$("input[data-k],select[data-k]",e).forEach(function(inp){
     var h=function(){var p=byId(inp.dataset.id);if(!p)return;var old=p[inp.dataset.k];p[inp.dataset.k]=inp.value.trim();
       if(inp.dataset.k==="call"&&p.role==="parent"){var g=$('input[data-k="gen"][data-id="'+p.id+'"]',e);if(g&&(!g.value||g.value===genOf(old))){g.value=genOf(p.call);p.gen=g.value;}}
-      FAM.example=false;save();
+      FAM.example=false;save();schedulePush();
       var th=$('[data-photo="'+p.id+'"]',e);if(th&&!p.photo){avatarCache={};th.setAttribute("style",bgImg(p));}};
     inp.addEventListener("input",h);inp.addEventListener("change",h);
   });
-  $$("[data-photo]",e).forEach(function(b){b.onclick=function(){photoFor=b.dataset.photo;$("#fileIn").value="";$("#fileIn").click();};});
+  $$("[data-photo]",e).forEach(function(b){b.onclick=function(){openChooser(b.dataset.photo);};});
   $$("[data-rmphoto]",e).forEach(function(b){b.onclick=function(){var p=byId(b.dataset.rmphoto);p.photo="";save();drawEditor();};});
   $$("[data-hear]",e).forEach(function(b){b.onclick=function(){ac();say(whoIs(byId(b.dataset.hear)));};});
-  $$("[data-del]",e).forEach(function(b){b.onclick=function(){if(b.dataset.sure!=="1"){b.dataset.sure="1";b.textContent="Vahvista poisto";return;}FAM.people=P().filter(function(p){return p.id!==b.dataset.del;});FAM.example=false;save();drawEditor();};});
+  $$("[data-del]",e).forEach(function(b){b.onclick=function(){if(b.dataset.sure!=="1"){b.dataset.sure="1";b.textContent="Vahvista poisto";return;}FAM.people=P().filter(function(p){return p.id!==b.dataset.del;});FAM.example=false;save();schedulePush();drawEditor();};});
   $$("[data-add]",e).forEach(function(b){b.onclick=function(){
     var r=b.dataset.add,p={id:r+Date.now().toString(36),role:r,name:"",call:"",fact:"",photo:""};
     if(r==="grand"){p.side=b.dataset.side;var have=P().filter(function(x){return x.role==="grand"&&x.side===p.side;}).map(function(x){return x.rel;});p.rel=have.indexOf("äiti")<0?"äiti":"isä";p.call=p.rel==="äiti"?"Mummo":"Ukki";}
     if(r==="psib"){p.side=b.dataset.side;p.rel="sisko";p.call="Täti";}
     if(r==="sib")p.call="Sisarus";
     if(r==="pet"){p.call="Lemmikki";p.emoji="🐶";}
-    FAM.people.push(p);FAM.example=false;save();drawEditor();
+    FAM.people.push(p);FAM.example=false;save();schedulePush();drawEditor();
     var inp=$('input[data-k="call"][data-id="'+p.id+'"]',e);if(inp){inp.focus();inp.select();}
   };});
   $("#eSound").onclick=function(){FAM.sound=!FAM.sound;save();drawEditor();};
   $("#eLevels").onclick=function(){FAM.levels={find:1,pick:1,build:1,riddle:1};save();drawEditor();toast("Vaikeustasot nollattu");};
   $("#eStars").onclick=function(){if(this.dataset.sure!=="1"){this.dataset.sure="1";this.textContent="Vahvista: nollaa tähdet";return;}FAM.stars=0;save();drawEditor();};
   $("#eExport").onclick=exportData;
+  syncUi();
   $("#eImport").onclick=function(){$("#importIn").value="";$("#importIn").click();};
   $("#eReset").onclick=function(){if(this.dataset.sure!=="1"){this.dataset.sure="1";this.textContent="Vahvista: poista oma perhe";return;}FAM=exampleFamily();save();avatarCache={};drawEditor();};
 }
@@ -690,8 +709,8 @@ $("#fileIn").onchange=function(){
     var s=Math.min(im.naturalWidth,im.naturalHeight),size=360,c=document.createElement("canvas");c.width=c.height=size;
     c.getContext("2d").drawImage(im,(im.naturalWidth-s)/2,(im.naturalHeight-s)/3,s,s,0,0,size,size);
     URL.revokeObjectURL(url);
-    var p=byId(id);p.photo=c.toDataURL("image/jpeg",.82);FAM.example=false;
-    if(save())toast("Kuva lisätty");drawEditor();
+    var p=byId(id);p.photo=c.toDataURL("image/jpeg",.82);delete p.drive;FAM.example=false;
+    if(save())toast(syncReady()?"Kuva lisätty, tallennetaan Driveen…":"Kuva lisätty");avatarCache={};drawEditor();schedulePush();
   };
   im.onerror=function(){URL.revokeObjectURL(url);toast("Kuvaa ei voitu avata. Kokeile toista kuvaa.");};
   im.src=url;
@@ -703,15 +722,139 @@ function exportData(){
 }
 $("#importIn").onchange=function(){
   var f=this.files&&this.files[0];if(!f)return;var rd=new FileReader();
-  rd.onload=function(){try{var j=JSON.parse(rd.result);if(!j||!Array.isArray(j.people))throw 0;FAM=j;FAM.levels=FAM.levels||{find:1,pick:1,build:1,riddle:1};save();avatarCache={};drawEditor();toast("Varmuuskopio palautettu");}catch(e){toast("Tiedosto ei ole sukupuun varmuuskopio.");}};
+  rd.onload=function(){try{var j=JSON.parse(rd.result);if(!j||!Array.isArray(j.people))throw 0;FAM=j;FAM.levels=FAM.levels||{find:1,pick:1,build:1,riddle:1};FAM.example=false;save();avatarCache={};drawEditor();schedulePush();toast("Varmuuskopio palautettu");}catch(e){toast("Tiedosto ei ole sukupuun varmuuskopio.");}};
   rd.readAsText(f);
 };
 function toast(m){var t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){t.hidden=true;},3000);}
 
+
+/* =========================================================
+   Shared family tree (optional): the people and their Drive photos are kept in the
+   family's Google sheet through the board's Apps Script, so every device shows the same tree.
+   Stars, levels and sound stay per device. Without config.js or the family key, the game
+   simply works on this device only.
+   ========================================================= */
+var SYNC_ON=typeof BACKEND_URL==="string"&&/^https:\/\/script\.google\.com\//.test(BACKEND_URL);
+var SYNC={state:"",msg:"",folder:true};
+function famKey(){try{return localStorage.getItem("familyKey")||"";}catch(e){return "";}}
+function syncReady(){return SYNC_ON&&!!famKey();}
+function api(body){
+  body.key=famKey();
+  return fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)})
+    .then(function(r){return r.text();})
+    .then(function(t){var j;try{j=JSON.parse(t);}catch(e){throw new Error("html");}if(!j||j.ok===false)throw new Error(j&&j.error||"virhe");return j;});
+}
+function errText(e){var m=e&&e.message;if(m==="key")return "Perheen avain ei kelpaa.";if(m==="html")return "Taustapalvelu ei vastaa oikein. Onko Code.gs päivitetty?";if(m==="op")return "Code.gs on vanha versio. Päivitä se.";return "Ei yhteyttä. Peli toimii silti tällä laitteella.";}
+
+/* photo cache: Drive photos are kept on the device so the game also works offline */
+var PKEY="sukupuu.photos",PHOTOS={},PLOAD={};
+try{PHOTOS=JSON.parse(localStorage.getItem(PKEY)||"{}")||{};}catch(e){PHOTOS={};}
+function savePhotos(){try{localStorage.setItem(PKEY,JSON.stringify(PHOTOS));}catch(e){}}
+function squareJpeg(src,size){
+  return new Promise(function(res,rej){var im=new Image();im.onload=function(){
+    var s=Math.min(im.naturalWidth,im.naturalHeight),c=document.createElement("canvas");c.width=c.height=size;
+    c.getContext("2d").drawImage(im,(im.naturalWidth-s)/2,(im.naturalHeight-s)/3,s,s,0,0,size,size);res(c.toDataURL("image/jpeg",.82));};
+    im.onerror=function(){rej(new Error("img"));};im.src=src;});
+}
+function loadPhoto(id,size){
+  var k=id+"|"+size;if(PLOAD[k])return PLOAD[k];
+  if(!syncReady())return Promise.reject(new Error("offline"));
+  PLOAD[k]=api({op:"photo",id:id,size:size}).then(function(j){
+    var u="data:"+j.mime+";base64,"+j.data;
+    if(size!=="l")return u;
+    return squareJpeg(u,400).then(function(sq){PHOTOS[id]=sq;savePhotos();scheduleRedraw();return sq;});
+  });
+  PLOAD[k].catch(function(){setTimeout(function(){delete PLOAD[k];},60000);});
+  return PLOAD[k];
+}
+var redrawT=null;
+function scheduleRedraw(){clearTimeout(redrawT);redrawT=setTimeout(function(){avatarCache={};refreshAll();},250);}
+function refreshAll(){
+  if(!$("#edit").hidden){$$("[data-photo]").forEach(function(b){var p=byId(b.dataset.photo);if(p)b.setAttribute("style",bgImg(p));});return;}
+  drawTree();if(VIEW.mode==="find"||VIEW.mode==="riddle")markHints();
+}
+function sharedPeople(){return P().map(function(p){var o={};["id","role","side","rel","name","call","gen","fact","emoji","drive"].forEach(function(k){if(p[k]!=null&&p[k]!=="")o[k]=p[k];});return o;});}
+var pushT=null;
+function schedulePush(){if(!syncReady()||FAM.example)return;FAM.ts=Date.now();save();clearTimeout(pushT);pushT=setTimeout(pushTree,1500);}
+function pushTree(){
+  clearTimeout(pushT);
+  if(!syncReady()||FAM.example)return Promise.resolve();
+  SYNC.state="saving";syncUi();
+  /* device-only photos are uploaded first so the other devices can see them too */
+  var chain=Promise.resolve();
+  P().filter(function(p){return p.photo&&!p.drive;}).forEach(function(p){
+    chain=chain.then(function(){return api({op:"treePhoto",image:p.photo}).then(function(j){p.drive=j.id;PHOTOS[j.id]=p.photo;delete p.photo;savePhotos();save();});});});
+  return chain.then(function(){return api({op:"treeSave",value:{people:sharedPeople(),ts:FAM.ts||Date.now()}});})
+    .then(function(j){SYNC.folder=!!j.folder;SYNC.state="ok";syncUi();})
+    .catch(function(e){SYNC.state="error";SYNC.msg=errText(e);syncUi();});
+}
+function pullTree(){
+  if(!syncReady()||!$("#edit").hidden||VIEW.mode!=="home")return Promise.resolve();
+  return api({op:"tree"}).then(function(j){
+    SYNC.folder=!!j.folder;var t=j.tree;
+    if(t&&Array.isArray(t.people)&&t.people.length){
+      if(FAM.example||!FAM.ts||Number(t.ts)>FAM.ts){
+        var local={};P().forEach(function(p){if(p.photo&&!p.drive)local[p.id]=p.photo;});
+        FAM.people=t.people.map(function(p){if(!p.drive&&local[p.id])p.photo=local[p.id];return p;});
+        FAM.ts=Number(t.ts)||Date.now();FAM.example=false;save();avatarCache={};refreshAll();
+      }else if(FAM.ts>Number(t.ts))pushTree();
+    }else if(!FAM.example)pushTree();
+    SYNC.state="ok";syncUi();
+  }).catch(function(e){SYNC.state="error";SYNC.msg=errText(e);syncUi();});
+}
+function syncUi(){
+  var el=$("#syncSt");if(!el)return;
+  el.textContent=SYNC.state==="saving"?"Tallennetaan…":SYNC.state==="error"?SYNC.msg:SYNC.state==="ok"?"✓ Tallessa":"";
+  el.style.color=SYNC.state==="error"?"var(--bad)":"var(--soft)";
+}
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")pullTree();});
+
+/* photo chooser: Drive folder grid + camera/gallery */
+function openChooser(pid){
+  var p=byId(pid);if(!p)return;
+  var drive=syncReady(),ov=document.createElement("div");ov.className="chooser";
+  ov.innerHTML='<div class="chin"><div class="chhead"><h2>Kuva: '+esc(p.call||p.name||"")+'</h2><button class="btn" type="button" data-x="close">Sulje</button></div>'+
+    (drive?'<p class="chsub" id="chSub">Haetaan kuvia Drivesta…</p><div class="pgrid" id="pgrid"></div>':'<p class="chsub">Driven kuvat ovat käytössä, kun yhteinen tallennus on päällä.</p>')+
+    '<div class="prow"><button class="btn'+(drive?"":" primary")+'" type="button" data-x="device">📷 Ota kuva tai valitse laitteelta</button>'+((p.photo||p.drive)?'<button class="btn danger" type="button" data-x="remove">Poista kuva</button>':"")+'</div></div>';
+  $("#edit").appendChild(ov);
+  function close(){ov.remove();}
+  ov.addEventListener("click",function(e){if(e.target===ov)close();});
+  $('[data-x="close"]',ov).onclick=close;
+  $('[data-x="device"]',ov).onclick=function(){close();photoFor=pid;$("#fileIn").value="";$("#fileIn").click();};
+  var rm=$('[data-x="remove"]',ov);if(rm)rm.onclick=function(){delete p.photo;delete p.drive;FAM.example=false;save();schedulePush();close();avatarCache={};drawEditor();};
+  if(!drive)return;
+  var sub=$("#chSub",ov),grid=$("#pgrid",ov);
+  api({op:"photos"}).then(function(j){
+    if(!ov.isConnected)return;
+    sub.textContent=j.files.length?'Kansio "'+j.folder+'" · '+j.files.length+' kuvaa · napauta oikeaa':'Kansio "'+j.folder+'" on vielä tyhjä. Lisää kuvia Driveen tähän kansioon ja avaa tämä uudelleen.';
+    grid.innerHTML=j.files.map(function(f){return '<button type="button" class="pg'+(p.drive===f.id?" sel":"")+'" data-id="'+esc(f.id)+'" aria-label="'+esc(f.name)+'"><span>'+esc(f.name)+'</span></button>';}).join("");
+    var btns=$$(".pg",grid),i=0,active=0;
+    (function next(){while(active<4&&i<btns.length){(function(b){active++;
+      loadPhoto(b.dataset.id,"s").then(function(u){b.style.backgroundImage="url('"+u+"')";b.classList.add("ok");},function(){b.classList.add("err");})
+        .then(function(){active--;if(ov.isConnected)next();});})(btns[i++]);}})();
+    btns.forEach(function(b){b.onclick=function(){
+      btns.forEach(function(x){x.classList.toggle("sel",x===b);});sub.textContent="Ladataan kuvaa…";
+      loadPhoto(b.dataset.id,"l").then(function(){p.drive=b.dataset.id;delete p.photo;FAM.example=false;save();schedulePush();close();avatarCache={};drawEditor();toast("Kuva valittu");},
+        function(e){sub.textContent="Kuvaa ei saatu ladattua. "+errText(e);});
+    };});
+  }).catch(function(e){
+    if(!ov.isConnected)return;
+    var m=e&&e.message;
+    sub.textContent=m==="nofolder"?"Kuvakansiota ei ole vielä asetettu. Liitä kansion osoite Code.gs:n kohtaan SUKUPUU_KANSIO ja tee uusi versio.":
+      m==="folder"?"Kuvakansiota ei löytynyt. Tarkista kansion osoite Code.gs:ssä.":m==="op"?"Code.gs on vanha versio. Päivitä se, niin Driven kuvat toimivat.":"Driven kuvia ei saatu. "+errText(e);
+  });
+}
+function syncSectionHtml(){
+  if(!SYNC_ON)return '<div class="grp"><h2>Tallennus</h2><p style="margin:0;color:var(--soft)">Sukupuu on tallessa vain tällä laitteella. Kun sivu on samassa GitHub-osoitteessa kuin ilmoitustaulu (config.js), sukupuu ja Driven kuvat voidaan jakaa kaikille laitteille.</p></div>';
+  if(!famKey())return '<div class="grp"><h2>Yhteinen sukupuu</h2><p style="margin:0;color:var(--soft)">Syötä perheen avain (sama kuin ilmoitustaululla), niin sukupuu näkyy kaikilla laitteilla ja kuvat voi valita Drivesta.</p><div class="pf"><label>Perheen avain<input id="keyIn" type="password" autocomplete="current-password"></label></div><div class="prow"><button class="btn primary small" type="button" id="keyGo">Ota käyttöön</button></div></div>';
+  return '<div class="grp"><h2>☁️ Yhteinen sukupuu</h2><p style="margin:0;color:var(--soft)">Henkilöt ja kuvat tallentuvat perheen Google-taulukkoon ja näkyvät kaikilla laitteilla. Tähdet ja vaikeustasot ovat laitekohtaisia. <span id="syncSt"></span></p>'+
+    (SYNC.folder?"":'<p class="note" style="margin:0">Kuvakansiota ei ole vielä asetettu: liitä Drive-kansion osoite Code.gs:n kohtaan <b>SUKUPUU_KANSIO</b>.</p>')+'</div>';
+}
+
 /* =========================================================
    Start
    ========================================================= */
-load();setMode("home");
+load();setMode("home");pullTree();
 /* keep the screen awake while playing, where the browser allows it */
 var lock=null;function wake(){if("wakeLock" in navigator&&!lock)navigator.wakeLock.request("screen").then(function(l){lock=l;l.addEventListener("release",function(){lock=null;});}).catch(function(){});}
 document.addEventListener("pointerdown",wake,{once:false,passive:true});

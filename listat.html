@@ -414,8 +414,8 @@ function flush(){
 }
 function pull(){
   if(!configured()||!key()||Q.length||SYNC.flushing)return Promise.resolve();
-  return fetch(BACKEND_URL+"?key="+encodeURIComponent(key())+"&t="+Date.now()).then(function(r){return r.text();})
-    .then(function(t){var j;try{j=JSON.parse(t);}catch(e){throw new Error(/accounts\.google|sign in/i.test(t)?"login":"html");}
+  return post({op:"get"})
+    .then(function(j){
       if(!j||j.ok===false)throw new Error(j&&j.error||"virhe");
       if(Q.length)return;              /* a local change arrived meanwhile; the next flush brings fresh data */
       fromServer(j);saveCache();SYNC.last=Date.now();setSync("ok");refresh();})

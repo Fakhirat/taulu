@@ -108,7 +108,24 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(-
 .note .who{font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.75;display:flex;justify-content:space-between;gap:6px}
 
 .deps{display:flex;flex-direction:column}
-.dep{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.dep{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:9px 0;border:none;border-top:1px solid var(--line);background:none;color:inherit;font:inherit;text-align:left;width:100%;cursor:pointer}
+.dep:hover .dest{color:var(--accent)}
+.dep-hint{font-size:12px;color:var(--muted);margin:8px 0 0}
+.bm-head{display:flex;align-items:center;gap:12px}
+.bm-t{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.bm-t b{font-size:18px}
+#bmSt{font-size:14px;color:var(--muted)}
+.bm-map{height:min(56vh,520px);border-radius:12px;overflow:hidden;background:var(--today);z-index:0}
+.bm-stops{display:flex;flex-direction:column;max-height:22vh;overflow:auto}
+.bm-stop{display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;padding:5px 2px;font-size:14px}
+.bm-stop .dot2{width:10px;height:10px;border-radius:50%;background:var(--accent);justify-self:center}
+.bm-stop .t{color:var(--muted);font-variant-numeric:tabular-nums}
+.bm-stop.me{font-weight:700}
+.bm-stop.me .dot2{width:14px;height:14px;background:var(--warn)}
+.bus-ic{transform:translate(-50%,-50%);display:inline-block;white-space:nowrap;background:var(--line-bg);color:var(--line-ink);font-family:var(--display);font-weight:700;font-size:15px;border:3px solid #fff;border-radius:999px;padding:3px 9px;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+.bus-ic.other{opacity:.5;font-size:12px;padding:1px 6px;border-width:2px}
+.stop-ic{transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;font-size:26px;line-height:1}
+.stop-ic span{font-family:var(--body);font-size:12px;font-weight:700;background:#fff;color:#17302a;border-radius:6px;padding:2px 6px;margin-top:2px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.25)}
 .dep:first-child{border-top:none}
 .lineno{background:var(--line-bg);color:var(--line-ink);font-family:var(--display);font-weight:700;font-size:17px;min-width:46px;text-align:center;padding:5px 6px;border-radius:8px;font-variant-numeric:tabular-nums}
 .dest{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}
@@ -278,6 +295,7 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(-
 .lsep{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:12px 0 4px}
 .cake{flex:none;font-size:13px;line-height:1;width:14px;text-align:center}
 /* photo notes */
+.note .nimg.broken{display:none}
 .note .nimg{display:block;width:calc(100% + 24px);margin:-12px -12px 0;max-height:170px;object-fit:cover;border-radius:4px 4px 0 0;background:rgba(0,0,0,.06)}
 .photo-prev{max-width:100%;max-height:45vh;border-radius:10px;display:block;object-fit:contain;background:var(--bg)}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -490,10 +508,11 @@ function explain(e){
   return "Yhteys taustapalveluun ei onnistunut. Tarkista index.html:n osoite (päättyy /exec) ja nettiyhteys.";
 }
 function report(e){S.lastErr=explain(e);toast(S.lastErr,9000);renderFoot();}
+/* every request is a POST so the family key never shows up in addresses or browser history */
+function rawPost(body){body.key=key();return fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)}).then(parseResp);}
 function load(){
   if(!configured()||!key()||S.inflight)return Promise.resolve();
-  return fetch(BACKEND_URL+"?key="+encodeURIComponent(key())+"&t="+Date.now())
-    .then(parseResp).then(handle)
+  return rawPost({op:"get"}).then(handle)
     .then(function(r){if(S.lastErr){S.lastErr="";renderFoot();}return r;})
     .catch(function(e){if(e.message!=="key"){S.online=false;S.lastErr=explain(e);renderFoot();}});
 }
@@ -822,7 +841,18 @@ function daySheet(k){
 }
 
 /* ---------- photos (stored in Google Drive by the backend) ---------- */
-function photoUrl(id,alt){id=encodeURIComponent(id);return alt?"https://lh3.googleusercontent.com/d/"+id+"=w900":"https://drive.google.com/thumbnail?id="+id+"&sz=w900";}
+/* Note photos are private in Drive; the backend hands them out only with the family key. */
+var PHOTO={};
+function fetchPhoto(id){
+  if(!PHOTO[id]){PHOTO[id]=rawPost({op:"photo",id:id,size:"l"}).then(function(j){if(!j||!j.ok)throw new Error(j&&j.error||"photo");return "data:"+j.mime+";base64,"+j.data;});
+    PHOTO[id].catch(function(){delete PHOTO[id];});}
+  return PHOTO[id];
+}
+function hydratePhotos(root){
+  var imgs=(root||document).querySelectorAll("img[data-ph]");
+  for(var i=0;i<imgs.length;i++)(function(im){var id=im.getAttribute("data-ph");im.removeAttribute("data-ph");
+    fetchPhoto(id).then(function(u){im.src=u;im.hidden=false;},function(){im.alt="Kuvaa ei saatu";im.classList.add("broken");});})(imgs[i]);
+}
 function shrink(file){
   return new Promise(function(res,rej){
     var url=URL.createObjectURL(file),im=new Image();
@@ -849,11 +879,12 @@ function renderNotes(){
     b.style.background=n.who?colorOf(n.who):"var(--n1)";
     var d=n.ts?new Date(Number(n.ts)):null;
     var when=d?(ymd(d)===ymd(new Date())?hm(d):d.getDate()+"."+(d.getMonth()+1)+"."):"";
-    b.innerHTML=(n.img?'<img class="nimg" alt="" loading="lazy" src="'+photoUrl(n.img)+'">':"")+(n.text?'<div class="txt">'+esc(n.text)+'</div>':"")+'<div class="who"><span>'+esc(n.who||"")+'</span><span>'+when+'</span></div>';
-    var im=b.querySelector("img");if(im)im.onerror=function(){if(!this.dataset.f){this.dataset.f="1";this.src=photoUrl(n.img,true);}};
+    b.innerHTML=(n.img?'<img class="nimg" alt="" data-ph="'+esc(n.img)+'">':"")+(n.text?'<div class="txt">'+esc(n.text)+'</div>':"")+'<div class="who"><span>'+esc(n.who||"")+'</span><span>'+when+'</span></div>';
+
     b.onclick=function(){noteSheet(n);};
     box.appendChild(b);
   });
+  hydratePhotos(box);
 }
 
 /* ---------- weather (Open-Meteo) ---------- */
@@ -1005,7 +1036,7 @@ function wxDaysHtml(){
 /* ---------- buses (Föli SIRI) ---------- */
 function stopList(){return String(S.settings.stops||"").split(/[,\s]+/).filter(function(x){return /^[A-Za-z0-9]{1,8}$/.test(x);}).slice(0,3);}
 function fetchStop(stop){
-  function viaProxy(){return fetch(BACKEND_URL+"?action=bus&stop="+encodeURIComponent(stop)+"&key="+encodeURIComponent(key())).then(function(r){return r.json();});}
+  function viaProxy(){return rawPost({op:"bus",stop:stop});}
   if(S.busProxy)return viaProxy();
   return fetch("https://data.foli.fi/siri/sm/"+encodeURIComponent(stop)).then(function(r){return r.json();})
     .catch(function(){if(!configured()||!key())throw new Error("cors");S.busProxy=true;return viaProxy();});
@@ -1041,11 +1072,118 @@ function renderDeps(){
   list.forEach(function(d){
     var min=Math.round((d.exp-now)/60000),late=Math.round((d.exp-d.aim)/60000);
     var m=min<=0?"nyt":(min<=30?min+" min":hm(new Date(d.exp)));
-    html+='<div class="dep"><span class="lineno">'+esc(d.line)+'</span><span class="dest">'+(multi?'<span class="sname">'+esc(stopName(d.stop))+'</span>':"")+esc(d.dest||"")+'</span>'+
-      '<span class="when"><span class="m">'+(d.live?'<span class="live" title="Reaaliaikainen"></span>':"")+m+'</span><span class="c'+(late>=3?" late":"")+'">'+(min>30?"":hm(new Date(d.exp)))+(late>=3?" (+"+late+")":"")+'</span></span></div>';
+    html+='<button type="button" class="dep" data-di="'+list.indexOf(d)+'" aria-label="Näytä linja '+esc(d.line)+' kartalla"><span class="lineno">'+esc(d.line)+'</span><span class="dest">'+(multi?'<span class="sname">'+esc(stopName(d.stop))+'</span>':"")+esc(d.dest||"")+'</span>'+
+      '<span class="when"><span class="m">'+(d.live?'<span class="live" title="Reaaliaikainen"></span>':"")+m+'</span><span class="c'+(late>=3?" late":"")+'">'+(min>30?"":hm(new Date(d.exp)))+(late>=3?" (+"+late+")":"")+'</span></span></button>';
   });
-  box.innerHTML=html||('<p class="empty">'+(S.busErr||(S.busTime?"Ei lähtöjä lähiaikoina.":"Haetaan lähtöjä…"))+'</p>');
+  box.innerHTML=html?html+'<p class="dep-hint">Napauta lähtöä, niin näet bussin kartalla.</p>':('<p class="empty">'+(S.busErr||(S.busTime?"Ei lähtöjä lähiaikoina.":"Haetaan lähtöjä…"))+'</p>');
+  var rows=box.querySelectorAll("[data-di]");for(var i=0;i<rows.length;i++)rows[i].onclick=function(){openBusMap(list[+this.dataset.di]);};
   $("#busStamp").textContent=multi?"":stopName(stops[0]);
+}
+
+
+/* ---------- bus map: route and live position of the approaching bus (Föli open data) ---------- */
+function foliDirect(path){return fetch("https://data.foli.fi/"+path).then(function(r){if(!r.ok)throw new Error("http");return r.json();});}
+function foliTime(t){t=Number(t)||0;return t>1e12?t:t*1000;}
+function callRef(c){return String(c&&(c.stoppointref!=null?c.stoppointref:c.stop_point_ref!=null?c.stop_point_ref:c.stopid)||"");}
+function callTime(c){return foliTime(c&&(c.expectedarrivaltime||c.expecteddeparturetime||c.aimedarrivaltime||c.aimeddeparturetime));}
+function delaySec(v){var m=String(v&&v.delay||"").match(/^(-)?P(?:T)?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/);if(!m)return 0;var s=(+m[2]||0)*3600+(+m[3]||0)*60+(+m[4]||0);return m[1]?-s:s;}
+var LEAF=null;
+function leaflet(){
+  if(window.L)return Promise.resolve(window.L);if(LEAF)return LEAF;
+  LEAF=new Promise(function(res,rej){
+    var c=document.createElement("link");c.rel="stylesheet";c.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";document.head.appendChild(c);
+    var s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    s.onload=function(){res(window.L);};s.onerror=function(){LEAF=null;rej(new Error("leaflet"));};document.head.appendChild(s);});
+  return LEAF;
+}
+/* stop coordinates, kept on the device for a week */
+function compactStops(j){var out={};Object.keys(j||{}).forEach(function(k){var s=j[k];if(!s||s.stop_lat==null)return;var v=[s.stop_name||"",+s.stop_lat,+s.stop_lon];out[k]=v;if(s.stop_code)out[s.stop_code]=v;if(s.stop_id)out[s.stop_id]=v;});return out;}
+function getStops(){
+  if(S.stopsP)return S.stopsP;
+  try{var c=JSON.parse(localStorage.getItem("foli.stops")||"null");if(c&&c.d&&Date.now()-c.t<7*864e5){S.stopsP=Promise.resolve(c.d);return S.stopsP;}}catch(e){}
+  S.stopsP=foliDirect("gtfs/stops").then(compactStops)
+    .catch(function(e){if(!configured()||!key())throw e;return rawPost({op:"stops"}).then(function(j){return j.stops||{};});})
+    .then(function(d){try{localStorage.setItem("foli.stops",JSON.stringify({t:Date.now(),d:d}));}catch(e){}return d;});
+  S.stopsP.catch(function(){S.stopsP=null;});
+  return S.stopsP;
+}
+/* vehicles of one line; the full feed has every bus in the region, so it is filtered here or in the backend */
+function getVehicles(line){
+  var L=String(line).toUpperCase();
+  function viaProxy(){return rawPost({op:"vm",line:L}).then(function(j){return j.vehicles||[];});}
+  if(S.vmProxy)return viaProxy();
+  return foliDirect("siri/vm").then(function(j){var v=(j.result&&j.result.vehicles)||j.vehicles||{};
+      return Object.keys(v).map(function(k){return v[k];}).filter(function(x){return String(x.lineref).toUpperCase()===L;});})
+    .catch(function(e){if(!configured()||!key())throw e;S.vmProxy=true;return viaProxy();});
+}
+/* the bus on this departure: same line, our stop still ahead, arrival closest to the departure time */
+function pickBus(list,dep){
+  var best=null;
+  list.forEach(function(v){var calls=v.onwardcalls||[];for(var i=0;i<calls.length;i++){if(callRef(calls[i])===String(dep.stop)){
+    var t=callTime(calls[i])||dep.exp,d=Math.abs(t-dep.exp);if(!best||d<best.d)best={v:v,i:i,t:t,d:d};break;}}});
+  return best&&best.d<20*60000?best:null;
+}
+function openBusMap(dep){
+  var bm={dep:dep,first:true,timer:0};S.bm=bm;
+  openSheet('<div class="bm-head"><span class="lineno">'+esc(dep.line)+'</span><div class="bm-t"><b>'+esc(dep.dest||"")+'</b><span id="bmSt">Haetaan bussin sijaintia…</span></div><button class="btn" type="button" id="bmClose">Sulje</button></div>'+
+    '<div class="bm-map" id="bmMap"></div><div class="bm-stops" id="bmStops"></div>',
+  function(s){
+    s.classList.add("xl");
+    s.querySelector("#bmClose").onclick=closeSheet;
+    Promise.all([leaflet(),getStops()]).then(function(r){
+      if(S.bm!==bm)return;
+      var L=r[0],stops=r[1];bm.L=L;bm.stops=stops;
+      var me=stops[String(dep.stop)],center=me?[me[1],me[2]]:[(S.settings.lat||60.45),(S.settings.lon||22.27)];
+      var map=L.map(s.querySelector("#bmMap"),{zoomControl:true,attributionControl:true}).setView(center,15);bm.map=map;
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).addTo(map);
+      if(me)L.marker(center,{icon:L.divIcon({className:"",html:'<div class="stop-ic">🚏<span>'+esc(stopName(dep.stop))+'</span></div>',iconSize:[0,0]}),zIndexOffset:500}).addTo(map);
+      bm.route=L.layerGroup().addTo(map);bm.othersLayer=L.layerGroup().addTo(map);
+      setTimeout(function(){map.invalidateSize();},60);
+      busTick(bm);
+    }).catch(function(e){var st=$("#bmSt");if(st)st.textContent=e&&e.message==="leaflet"?"Karttaa ei saatu ladattua. Tarkista nettiyhteys.":"Pysäkkitietoja ei saatu Föliltä.";});
+  });
+}
+function busTick(bm){
+  if(S.bm!==bm)return;
+  getVehicles(bm.dep.line).then(function(list){if(S.bm===bm)busDraw(bm,list);})
+    .catch(function(e){var st=$("#bmSt");if(st&&S.bm===bm)st.textContent=e&&e.message==="op"?"Bussikartta tarvitsee päivitetyn Code.gs:n.":"Bussien sijainteja ei saatu juuri nyt. Yritetään uudelleen.";})
+    .then(function(){if(S.bm===bm)bm.timer=setTimeout(function(){busTick(bm);},S.vmProxy?10000:5000);});
+}
+function busDraw(bm,list){
+  var L=bm.L,stops=bm.stops,dep=bm.dep,pick=pickBus(list,dep),st=$("#bmSt"),now=Date.now();
+  function ll(ref){var s=stops[ref];return s?[s[1],s[2]]:null;}
+  /* other buses of the same line, faint */
+  bm.othersLayer.clearLayers();
+  list.forEach(function(v){if(pick&&v===pick.v)return;if(v.latitude==null)return;
+    L.marker([+v.latitude,+v.longitude],{icon:L.divIcon({className:"",html:'<div class="bus-ic other">'+esc(v.lineref)+'</div>',iconSize:[0,0]}),interactive:false}).addTo(bm.othersLayer);});
+  if(!pick){
+    bm.route.clearLayers();if(bm.bus){bm.map.removeLayer(bm.bus);bm.bus=null;}
+    if(st)st.textContent="Bussi ei ole vielä liikkeellä tällä vuorolla. Lähtö pysäkiltä klo "+hm(new Date(dep.exp))+(list.length?". Kartalla näkyvät linjan muut bussit.":".");
+    $("#bmStops").innerHTML="";return;
+  }
+  var v=pick.v,pos=[+v.latitude,+v.longitude],calls=v.onwardcalls||[];
+  /* route: passed stops grey, the way to our stop highlighted, the rest thin */
+  bm.route.clearLayers();
+  var prev=(v.previouscalls||[]).map(function(c){return ll(callRef(c));}).filter(Boolean);
+  var ahead=calls.slice(0,pick.i+1).map(function(c){return ll(callRef(c));}).filter(Boolean);
+  var after=calls.slice(pick.i).map(function(c){return ll(callRef(c));}).filter(Boolean);
+  if(prev.length)L.polyline(prev.concat([pos]),{color:"#8a9a95",weight:4,opacity:.6,dashArray:"6 8"}).addTo(bm.route);
+  if(after.length>1)L.polyline(after,{color:"#8a9a95",weight:3,opacity:.5}).addTo(bm.route);
+  L.polyline([pos].concat(ahead),{color:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()||"#1f6f5c",weight:6,opacity:.9}).addTo(bm.route);
+  ahead.slice(0,-1).forEach(function(p){L.circleMarker(p,{radius:4,color:"#fff",weight:2,fillColor:"#1f6f5c",fillOpacity:1}).addTo(bm.route);});
+  /* the bus glides to its new position */
+  if(!bm.bus)bm.bus=L.marker(pos,{icon:L.divIcon({className:"",html:'<div class="bus-ic">🚌 '+esc(v.lineref)+'</div>',iconSize:[0,0]}),zIndexOffset:1000}).addTo(bm.map);
+  else glide(bm.bus,pos);
+  if(bm.first){bm.first=false;var b=L.latLngBounds([pos].concat(ahead));if(b.isValid())bm.map.fitBounds(b,{padding:[50,50],maxZoom:16});}
+  var mins=Math.max(0,Math.round((pick.t-now)/60000)),left=pick.i,dl=Math.round(delaySec(v)/60);
+  if(st)st.textContent=(mins<=0?"Saapuu pysäkille nyt":"Pysäkillä noin "+mins+" min")+" · "+(left===0?"seuraava pysäkki on sinun":left+(left===1?" pysäkki välissä":" pysäkkiä välissä"))+
+    (dl>=2?" · "+dl+" min myöhässä":dl<=-2?" · "+(-dl)+" min etuajassa":" · aikataulussa");
+  $("#bmStops").innerHTML=calls.slice(0,pick.i+1).map(function(c,i){var s=stops[callRef(c)],nm=c.stoppointname||(s&&s[0])||callRef(c),t=callTime(c);
+    return '<div class="bm-stop'+(i===pick.i?" me":"")+'"><span class="dot2"></span><span class="n">'+esc(nm)+'</span><span class="t">'+(t?hm(new Date(t)):"")+'</span></div>';}).join("");
+}
+function glide(marker,to){
+  var from=marker.getLatLng(),t0=performance.now(),d=900;
+  (function step(t){var k=Math.min(1,(t-t0)/d);marker.setLatLng([from.lat+(to[0]-from.lat)*k,from.lng+(to[1]-from.lng)*k]);if(k<1)requestAnimationFrame(step);})(t0);
 }
 
 /* ---------- footer ---------- */
@@ -1060,7 +1198,7 @@ function renderAll(){renderWeek();renderNotes();renderKids();renderDeps();render
 
 /* ---------- sheets ---------- */
 function openSheet(html,bind){var s=$("#sheet");s.innerHTML=html;$("#overlay").hidden=false;bind(s);var f=s.querySelector("textarea,input");if(f&&!s.classList.contains("wide"))setTimeout(function(){f.focus();},50);}
-function closeSheet(){S.listOpen=false;$("#overlay").hidden=true;var sh=$("#sheet");sh.innerHTML="";sh.classList.remove("wide");sh.classList.remove("xl");}
+function closeSheet(){S.listOpen=false;if(S.bm){clearTimeout(S.bm.timer);if(S.bm.map)S.bm.map.remove();S.bm=null;}$("#overlay").hidden=true;var sh=$("#sheet");sh.innerHTML="";sh.classList.remove("wide");sh.classList.remove("xl");}
 $("#overlay").addEventListener("click",function(e){if(e.target.id==="overlay"&&!S.mustKey)closeSheet();});
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!$("#overlay").hidden&&!S.mustKey)closeSheet();});
 
@@ -1080,14 +1218,14 @@ function noteSheet(n){
   var edit=!!n,imgId=n&&n.img?n.img:"",newImg=null,removed=false;
   openSheet('<h3>'+(edit?"Muokkaa lappua":"Uusi lappu")+'</h3>'+
    '<div class="field"><span class="flabel">Kuva (valinnainen)</span>'+
-     '<img id="nPrev" class="photo-prev" alt=""'+(imgId?' src="'+photoUrl(imgId)+'"':' hidden')+'>'+
+     '<img id="nPrev" class="photo-prev" alt=""'+(imgId?' data-ph="'+esc(imgId)+'"':"")+' hidden>'+
      '<div class="chips"><label class="btn" for="nFile" id="nPick">'+(imgId?"Vaihda kuva":"Lisää kuva")+'</label><input id="nFile" class="vh" type="file" accept="image/*">'+
      '<button class="btn" type="button" id="nRemove"'+(imgId?"":" hidden")+'>Poista kuva</button></div><p class="hint" id="nImgMsg"></p></div>'+
    '<div class="field"><label for="nText">Viesti'+(imgId?" (valinnainen)":"")+'</label><textarea id="nText" maxlength="240">'+esc(n?n.text:"")+'</textarea></div>'+
    '<div class="field"><span class="flabel">Keneltä tai kenelle</span>'+whoChips(n?n.who:"")+'</div>'+
    '<div class="sheet-actions">'+(edit?'<button class="btn danger" type="button" id="del">Poista lappu</button>':"")+'<button class="btn" type="button" id="cancel">Peruuta</button><button class="btn primary" type="button" id="save">Tallenna</button></div>',
   function(s){var who=bindChips(s),prev=s.querySelector("#nPrev"),msg=s.querySelector("#nImgMsg");
-    if(imgId)prev.onerror=function(){if(!this.dataset.f){this.dataset.f="1";this.src=photoUrl(imgId,true);}};
+    if(imgId)hydratePhotos(s);
     s.querySelector("#nFile").onchange=function(){var f=this.files&&this.files[0];if(!f)return;msg.textContent="Käsitellään kuvaa…";
       shrink(f).then(function(data){newImg=data;removed=false;prev.src=data;prev.hidden=false;s.querySelector("#nRemove").hidden=false;s.querySelector("#nPick").textContent="Vaihda kuva";msg.textContent="";},
         function(){msg.textContent="Kuvaa ei voitu avata. Kokeile toista kuvaa (JPG tai PNG).";});};

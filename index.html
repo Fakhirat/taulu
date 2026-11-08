@@ -1113,16 +1113,68 @@ function getVehicles(line){
   function viaProxy(){return rawPost({op:"vm",line:L}).then(function(j){return j.vehicles||[];});}
   if(S.vmProxy)return viaProxy();
   return foliDirect("siri/vm").then(function(j){var v=(j.result&&j.result.vehicles)||j.vehicles||{};
-      return Object.keys(v).map(function(k){return v[k];}).filter(function(x){return String(x.lineref).toUpperCase()===L;});})
+      return Object.keys(v).map(function(k){var x=v[k];if(x&&!x._id)x._id=k;return x;}).filter(function(x){return x&&(String(x.lineref).toUpperCase()===L||String(x.publishedlinename||"").toUpperCase()===L);});})
     .catch(function(e){if(!configured()||!key())throw e;S.vmProxy=true;return viaProxy();});
 }
-/* the bus on this departure: same line, our stop still ahead, arrival closest to the departure time */
-function pickBus(list,dep){
+function sameStop(a,b){return String(a).trim().replace(/^0+/,"")===String(b).trim().replace(/^0+/,"");}
+function vid(v){return String(v.vehicleref||v._id||"");}
+/* The bus on this departure: same line, our stop still ahead, arrival closest to the departure time.
+   A stop can appear twice on long or looping routes, so every occurrence is considered,
+   and the bus already on the map is preferred so the marker doesn't jump between buses. */
+function pickBus(list,dep,keep){
   var best=null;
-  list.forEach(function(v){var calls=v.onwardcalls||[];for(var i=0;i<calls.length;i++){if(callRef(calls[i])===String(dep.stop)){
-    var t=callTime(calls[i])||dep.exp,d=Math.abs(t-dep.exp);if(!best||d<best.d)best={v:v,i:i,t:t,d:d};break;}}});
-  return best&&best.d<20*60000?best:null;
+  list.forEach(function(v){var calls=v.onwardcalls||[];for(var i=0;i<calls.length;i++){if(sameStop(callRef(calls[i]),dep.stop)){
+    var t=callTime(calls[i])||dep.exp,d=Math.abs(t-dep.exp);if(keep&&vid(v)===keep)d=Math.max(0,d-5*60000);
+    if(!best||d<best.d)best={v:v,i:i,t:t,d:d};}}});
+  return best&&best.d<25*60000?best:null;
 }
+
+/* ---------- real street geometry for the route (Föli GTFS shapes) ---------- */
+function foliGtfs(path){
+  function viaProxy(){return rawPost({op:"gtfs",path:path}).then(function(j){return j.data;});}
+  if(S.gtfsProxy)return viaProxy();
+  return foliDirect("gtfs/"+path).catch(function(e){if(!configured()||!key())throw e;S.gtfsProxy=true;return viaProxy();});
+}
+function asList(j){return Array.isArray(j)?j:Object.keys(j||{}).map(function(k){return j[k];});}
+var GT={trips:{},shapes:{}};
+function getRoutes(){
+  if(GT.routes)return GT.routes;
+  try{var c=JSON.parse(localStorage.getItem("foli.routes")||"null");if(c&&c.d&&Date.now()-c.t<7*864e5){GT.routes=Promise.resolve(c.d);return GT.routes;}}catch(e){}
+  GT.routes=foliGtfs("routes").then(function(j){var d=asList(j).map(function(r){return {id:String(r.route_id),n:String(r.route_short_name||"")};});
+    try{localStorage.setItem("foli.routes",JSON.stringify({t:Date.now(),d:d}));}catch(e){}return d;});
+  GT.routes.catch(function(){GT.routes=null;});return GT.routes;
+}
+function getTrips(routeId){
+  if(!GT.trips[routeId]){GT.trips[routeId]=foliGtfs("trips/route/"+encodeURIComponent(routeId)).then(function(j){return asList(j).map(function(t){return {shape:String(t.shape_id||""),head:String(t.trip_headsign||""),dir:String(t.direction_id==null?"":t.direction_id)};}).filter(function(t){return t.shape;});});
+    GT.trips[routeId].catch(function(){delete GT.trips[routeId];});}
+  return GT.trips[routeId];
+}
+function getShape(id){
+  if(!GT.shapes[id]){GT.shapes[id]=foliGtfs("shapes/"+encodeURIComponent(id)).then(function(j){return asList(j).map(function(p){return Array.isArray(p)?[+p[0],+p[1]]:[+p.lat,+p.lon];}).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);});});
+    GT.shapes[id].catch(function(){delete GT.shapes[id];});}
+  return GT.shapes[id];
+}
+function d2(a,b){var x=(a[1]-b[1])*Math.cos(a[0]*Math.PI/180)*111320,y=(a[0]-b[0])*110540;return x*x+y*y;}
+function nearestIdx(pts,p,from){var best=-1,bd=Infinity;for(var i=from||0;i<pts.length;i++){var d=d2(pts[i],p);if(d<bd){bd=d;best=i;}}return {i:best,m:Math.sqrt(bd)};}
+function normName(s){return String(s||"").toLowerCase().replace(/[^a-z0-9åäö]+/g,"");}
+/* Finds the route variant whose street geometry runs closest to the bus's stops. Resolves null if nothing fits well. */
+function routeShapeFor(v,dep,samples){
+  var L=String(dep.line).toUpperCase();
+  return getRoutes().then(function(routes){
+    var rs=routes.filter(function(r){return r.n.toUpperCase()===L;}).slice(0,3);if(!rs.length)return null;
+    return Promise.all(rs.map(function(r){return getTrips(r.id).catch(function(){return [];});})).then(function(lists){
+      var trips=[].concat.apply([],lists),dest=normName(v.destinationname||dep.dest);
+      var cand=trips.filter(function(t){return normName(t.head)===dest;});if(!cand.length)cand=trips.filter(function(t){var h=normName(t.head);return h&&dest&&(h.indexOf(dest)>=0||dest.indexOf(h)>=0);});if(!cand.length)cand=trips;
+      var ids=[];cand.forEach(function(t){if(ids.indexOf(t.shape)<0)ids.push(t.shape);});ids=ids.slice(0,8);
+      return Promise.all(ids.map(function(id){return getShape(id).catch(function(){return null;});})).then(function(shapes){
+        var best=null;
+        shapes.forEach(function(pts){if(!pts||pts.length<2)return;var sum=0;samples.forEach(function(s){sum+=nearestIdx(pts,s).m;});var m=sum/samples.length;if(!best||m<best.m)best={pts:pts,m:m};});
+        return best&&best.m<120?best.pts:null;
+      });
+    });
+  });
+}
+
 function openBusMap(dep){
   var bm={dep:dep,first:true,timer:0};S.bm=bm;
   openSheet('<div class="bm-head"><span class="lineno">'+esc(dep.line)+'</span><div class="bm-t"><b>'+esc(dep.dest||"")+'</b><span id="bmSt">Haetaan bussin sijaintia…</span></div><button class="btn" type="button" id="bmClose">Sulje</button></div>'+
@@ -1150,7 +1202,9 @@ function busTick(bm){
     .then(function(){if(S.bm===bm)bm.timer=setTimeout(function(){busTick(bm);},S.vmProxy?10000:5000);});
 }
 function busDraw(bm,list){
-  var L=bm.L,stops=bm.stops,dep=bm.dep,pick=pickBus(list,dep),st=$("#bmSt"),now=Date.now();
+  bm.lastList=list;
+  var L=bm.L,stops=bm.stops,dep=bm.dep,pick=pickBus(list,dep,bm.keep),st=$("#bmSt"),now=Date.now();
+  if(pick)bm.keep=vid(pick.v);
   function ll(ref){var s=stops[ref];return s?[s[1],s[2]]:null;}
   /* other buses of the same line, faint */
   bm.othersLayer.clearLayers();
@@ -1162,19 +1216,32 @@ function busDraw(bm,list){
     $("#bmStops").innerHTML="";return;
   }
   var v=pick.v,pos=[+v.latitude,+v.longitude],calls=v.onwardcalls||[];
-  /* route: passed stops grey, the way to our stop highlighted, the rest thin */
+  /* route: passed part grey, the way to our stop highlighted, the rest thin.
+     Street geometry is loaded once per bus; until then (or if none fits) stops are joined directly. */
+  var stopPts=calls.slice(0,pick.i+1).map(function(c){return ll(callRef(c));}).filter(Boolean);
+  var skey=vid(v)+"|"+(v.destinationname||"");
+  if(bm.shapeKey!==skey){
+    bm.shapeKey=skey;bm.shape=null;
+    var samples=(v.previouscalls||[]).slice(-3).map(function(c){return ll(callRef(c));}).filter(Boolean).concat(stopPts);if(samples.length<2)samples.push(pos);
+    routeShapeFor(v,dep,samples).then(function(pts){if(S.bm===bm&&bm.shapeKey===skey){bm.shape=pts||false;busDraw(bm,bm.lastList);}},function(){if(bm.shapeKey===skey)bm.shape=false;});
+  }
+  var prev,ahead,after,me=ll(String(dep.stop));
+  if(bm.shape){
+    var pts=bm.shape,iv=nearestIdx(pts,pos).i,is=me?nearestIdx(pts,me,iv).i:pts.length-1;
+    prev=pts.slice(0,iv+1).concat([pos]);ahead=[pos].concat(pts.slice(iv+1,is+1));if(me)ahead.push(me);after=pts.slice(is);
+  }else{
+    prev=(v.previouscalls||[]).map(function(c){return ll(callRef(c));}).filter(Boolean).concat([pos]);
+    ahead=[pos].concat(stopPts);after=calls.slice(pick.i).map(function(c){return ll(callRef(c));}).filter(Boolean);
+  }
   bm.route.clearLayers();
-  var prev=(v.previouscalls||[]).map(function(c){return ll(callRef(c));}).filter(Boolean);
-  var ahead=calls.slice(0,pick.i+1).map(function(c){return ll(callRef(c));}).filter(Boolean);
-  var after=calls.slice(pick.i).map(function(c){return ll(callRef(c));}).filter(Boolean);
-  if(prev.length)L.polyline(prev.concat([pos]),{color:"#8a9a95",weight:4,opacity:.6,dashArray:"6 8"}).addTo(bm.route);
+  if(prev.length>1)L.polyline(prev,{color:"#8a9a95",weight:4,opacity:.6,dashArray:"6 8"}).addTo(bm.route);
   if(after.length>1)L.polyline(after,{color:"#8a9a95",weight:3,opacity:.5}).addTo(bm.route);
-  L.polyline([pos].concat(ahead),{color:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()||"#1f6f5c",weight:6,opacity:.9}).addTo(bm.route);
-  ahead.slice(0,-1).forEach(function(p){L.circleMarker(p,{radius:4,color:"#fff",weight:2,fillColor:"#1f6f5c",fillOpacity:1}).addTo(bm.route);});
+  L.polyline(ahead,{color:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()||"#1f6f5c",weight:6,opacity:.9}).addTo(bm.route);
+  stopPts.slice(0,-1).forEach(function(p){L.circleMarker(p,{radius:4,color:"#fff",weight:2,fillColor:"#1f6f5c",fillOpacity:1}).addTo(bm.route);});
   /* the bus glides to its new position */
   if(!bm.bus)bm.bus=L.marker(pos,{icon:L.divIcon({className:"",html:'<div class="bus-ic">🚌 '+esc(v.lineref)+'</div>',iconSize:[0,0]}),zIndexOffset:1000}).addTo(bm.map);
   else glide(bm.bus,pos);
-  if(bm.first){bm.first=false;var b=L.latLngBounds([pos].concat(ahead));if(b.isValid())bm.map.fitBounds(b,{padding:[50,50],maxZoom:16});}
+  if(bm.first){bm.first=false;var b=L.latLngBounds([pos].concat(stopPts));if(b.isValid())bm.map.fitBounds(b,{padding:[50,50],maxZoom:16});}
   var mins=Math.max(0,Math.round((pick.t-now)/60000)),left=pick.i,dl=Math.round(delaySec(v)/60);
   if(st)st.textContent=(mins<=0?"Saapuu pysäkille nyt":"Pysäkillä noin "+mins+" min")+" · "+(left===0?"seuraava pysäkki on sinun":left+(left===1?" pysäkki välissä":" pysäkkiä välissä"))+
     (dl>=2?" · "+dl+" min myöhässä":dl<=-2?" · "+(-dl)+" min etuajassa":" · aikataulussa");

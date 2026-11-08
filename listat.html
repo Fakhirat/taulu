@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f6f5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Listat">
+<title>Perheen listat</title>
+<link rel="manifest" href="listat.webmanifest">
+<link rel="apple-touch-icon" href="listat-180.png">
+<link rel="icon" href="listat-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<script src="config.js"></script>
+<style>
+/* Layout: phone-first app. Sticky header, scrolling body, add bar pinned to the bottom within thumb reach. */
+:root{
+  --bg:#eef1ef; --panel:#fbfcfb; --sunk:#e4e9e6; --ink:#17302a; --muted:#5d716b; --line:#d5ddd9;
+  --accent:#1f6f5c; --accent-ink:#fff; --soft:#e2efe9; --danger:#a33a2c; --warn:#a86a00; --ok:#2f7d4f;
+  --n1:#f6e39a; --n2:#bfe0d2; --n3:#f3c4b8; --n4:#c9d3f2; --n5:#e3cbec; --n6:#d9e6a8; --note-ink:#1d2622;
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#101816; --panel:#17221f; --sunk:#0c1311; --ink:#e4ece8; --muted:#93a8a1; --line:#2a3a35;
+  --accent:#5cc3a6; --accent-ink:#0c1a16; --soft:#1d332c; --danger:#ef8a7a; --warn:#e8b25a; --ok:#6fd39a;
+  --n1:#d9c46e; --n2:#8fc4ad; --n3:#dc9d8e; --n4:#9eaee0; --n5:#c3a2d0; --n6:#b6c97c; --note-ink:#141a18; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101816; --panel:#17221f; --sunk:#0c1311; --ink:#e4ece8; --muted:#93a8a1; --line:#2a3a35;
+  --accent:#5cc3a6; --accent-ink:#0c1a16; --soft:#1d332c; --danger:#ef8a7a; --warn:#e8b25a; --ok:#6fd39a;
+  --n1:#d9c46e; --n2:#8fc4ad; --n3:#dc9d8e; --n4:#9eaee0; --n5:#c3a2d0; --n6:#b6c97c; --note-ink:#141a18; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:contain}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+.wrap{max-width:720px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+svg.i{width:22px;height:22px;flex:none}
+
+/* header */
+.bar{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:max(10px,env(safe-area-inset-top,0px));padding-bottom:10px;border-bottom:1px solid var(--line)}
+.bar .wrap{display:flex;align-items:center;gap:10px}
+.bar h1{font-family:var(--display);font-weight:700;font-size:24px;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar h1 button{background:none;border:none;padding:0;font:inherit;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.ib{border:none;background:none;width:44px;height:44px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--ink);flex:none}
+.ib:hover{background:var(--soft)}
+.sync{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.sync::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.sync.saving::before{background:var(--warn)}
+.sync.offline::before,.sync.error::before{background:var(--danger)}
+.sync.error{color:var(--danger)}
+.av{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--note-ink);background:var(--n2);border:none;flex:none}
+.av.sm{width:22px;height:22px;font-size:11px}
+
+main{padding-top:14px;padding-bottom:calc(120px + env(safe-area-inset-bottom,0px))}
+.muted{color:var(--muted)}
+.hint{font-size:14px;color:var(--muted);line-height:1.45;margin:0}
+.lbl{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+
+/* home */
+.search{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:0 12px;margin-bottom:16px}
+.search input{border:none;background:none;min-height:46px;flex:1;font:inherit;color:var(--ink);outline:none}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;text-align:left;min-height:104px}
+.card .top{display:flex;align-items:center;gap:10px}
+.tico{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--soft);color:var(--accent);flex:none}
+.card .nm{font-family:var(--display);font-weight:700;font-size:18px;line-height:1.15;min-width:0;overflow-wrap:break-word;hyphens:auto}
+.card .sum{font-size:14px;color:var(--muted);margin-top:auto}
+.card .sum b{color:var(--ink)}
+.card .sum .bad{color:var(--danger);font-weight:700}
+.prog{height:6px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.prog i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
+.newcard{border-style:dashed;align-items:center;justify-content:center;color:var(--accent);font-weight:700;background:transparent}
+.sec{margin-top:24px;display:flex;flex-direction:column;gap:10px}
+.install{background:var(--soft);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;margin-top:20px}
+.install h3{margin:0;font-family:var(--display);font-size:17px}
+.res{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:16px}
+.res button{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;border:none;background:none;border-top:1px solid var(--line);text-align:left}
+.res button:first-child{border-top:none}
+
+/* list view */
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 13px;min-height:38px;font-size:15px;display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.chip.ghost{background:transparent}
+.chip .plus{font-weight:700;color:var(--accent)}
+.chip[aria-pressed="true"] .plus{color:inherit}
+.sugg{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.sugg .row{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.sugg .row::-webkit-scrollbar{display:none}
+.sugg .chip{white-space:nowrap;flex:none}
+.progline{display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:14px;color:var(--muted)}
+.progline .prog{flex:1;height:8px}
+.group{margin-bottom:14px}
+.ghead{display:flex;align-items:baseline;justify-content:space-between;padding:6px 2px}
+.items{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.item{display:flex;align-items:center;gap:12px;padding:0 6px 0 12px;min-height:54px;border-top:1px solid var(--line)}
+.item:first-child{border-top:none}
+.ck{flex:none;width:30px;height:30px;border-radius:9px;border:2px solid var(--muted);background:none;display:flex;align-items:center;justify-content:center;padding:0;color:var(--accent-ink)}
+.ck svg{width:18px;height:18px;opacity:0}
+.item.done .ck{background:var(--accent);border-color:var(--accent)}
+.item.done .ck svg{opacity:1}
+.it{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;background:none;border:none;text-align:left;padding:10px 0}
+.it .t{font-size:17px;overflow-wrap:anywhere;line-height:1.25}
+.it .s{font-size:13px;color:var(--muted);overflow-wrap:anywhere;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.item.done .it .t{text-decoration:line-through;color:var(--muted)}
+.qty{display:inline-block;background:var(--soft);color:var(--ink);font-size:13px;font-weight:700;border-radius:6px;padding:1px 7px;margin-left:6px;vertical-align:2px;font-variant-numeric:tabular-nums}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ink)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--muted)}
+.del{flex:none;border:none;background:none;color:var(--muted);width:42px;height:42px;font-size:22px;border-radius:50%}
+.del:hover{background:var(--soft)}
+.donehead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 2px 6px}
+.linkbtn{border:none;background:none;color:var(--accent);font-weight:700;padding:8px 4px}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:14px;padding:20px;text-align:center;color:var(--muted);line-height:1.5}
+.banner{background:var(--soft);border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;margin-bottom:12px;display:flex;gap:10px;align-items:flex-start}
+
+/* chores */
+.chore{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;padding:12px 12px 12px 14px;border-top:1px solid var(--line)}
+.chore:first-child{border-top:none}
+.chore .nm{font-size:17px;font-weight:700;background:none;border:none;text-align:left;padding:0;overflow-wrap:anywhere}
+.chore .meta{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;grid-column:1}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--sunk);color:var(--ink)}
+.pill.late{background:var(--danger);color:#fff}
+.pill.today{background:var(--warn);color:#fff}
+.pill.okk{background:var(--soft);color:var(--ok)}
+.donebtn{grid-row:1 / span 2;grid-column:2;border:1px solid var(--accent);background:none;color:var(--accent);border-radius:999px;padding:9px 14px;font-weight:700;min-height:44px}
+.donebtn.just{background:var(--accent);color:var(--accent-ink)}
+.score{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.score .s1{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 12px 4px 4px;font-size:14px}
+.score b{font-variant-numeric:tabular-nums}
+
+/* wish */
+.wish{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:12px 10px 12px 14px;border-top:1px solid var(--line);align-items:center}
+.wish:first-child{border-top:none}
+.wish .nm{font-size:17px;font-weight:700;background:none;border:none;text-align:left;padding:0;overflow-wrap:anywhere}
+.wish .meta{font-size:13px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.wish .meta a{color:var(--accent);font-weight:700;text-decoration:none}
+.stars{color:var(--warn);letter-spacing:1px}
+.resv{border:1px solid var(--line);background:none;border-radius:999px;padding:8px 12px;font-size:14px;min-height:40px;white-space:nowrap}
+.resv.mine{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.resv.other{color:var(--muted);border-style:dashed}
+.wish.got .nm{text-decoration:line-through;color:var(--muted)}
+
+/* add bar */
+.addbar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--bg);border-top:1px solid var(--line);padding-top:10px;padding-bottom:max(10px,env(safe-area-inset-bottom,0px))}
+.addbar form{display:flex;gap:8px;align-items:center}
+.addbar input,.addbar select{min-height:48px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;padding:0 14px}
+.addbar input{flex:1;min-width:0}
+.addbar select{max-width:38%;padding:0 8px}
+.addbtn{min-height:48px;min-width:48px;border-radius:12px;border:none;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:22px}
+.ac{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
+.ac button{border:none;background:none;text-align:left;padding:11px 14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+.ac button:first-child{border-top:none}
+.ac small{color:var(--muted)}
+.fab{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:6;border:none;background:var(--accent);color:var(--accent-ink);font-weight:700;border-radius:999px;padding:14px 20px;min-height:52px;box-shadow:0 4px 14px rgba(0,0,0,.18);display:inline-flex;gap:6px;align-items:center}
+
+/* shopping mode */
+.shopmode .item{min-height:64px}
+.shopmode .it .t{font-size:21px}
+.shopmode .ck{width:36px;height:36px}
+
+/* sheet */
+.overlay{position:fixed;inset:0;background:rgba(10,20,17,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--panel);color:var(--ink);width:min(560px,100%);max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px max(18px,env(safe-area-inset-right,0px)) max(18px,env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+@media (min-width:640px){.overlay{align-items:center}.sheet{border-radius:18px}}
+.sheet h3{font-family:var(--display);font-size:22px;margin:0}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label,.flabel{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.field input,.field select,.field textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:46px;width:100%}
+.field textarea{min-height:80px;resize:vertical}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:10px 16px;min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.left{margin-right:auto}
+.menu{display:flex;flex-direction:column}
+.menu button{border:none;background:none;text-align:left;padding:14px 4px;border-top:1px solid var(--line);display:flex;align-items:center;gap:12px;font-size:16px}
+.menu button:first-child{border-top:none}
+.menu button.danger{color:var(--danger)}
+.typegrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.typebtn{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;text-align:left;display:flex;flex-direction:column;gap:6px}
+.typebtn[aria-pressed="true"]{border-color:var(--accent);background:var(--soft)}
+.typebtn b{font-size:15px}
+.typebtn span{font-size:12px;color:var(--muted);line-height:1.35}
+.ord{display:flex;flex-direction:column;gap:6px}
+.ord .r{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:4px 4px 4px 12px}
+.ord .r span{flex:1}
+.ord .r button{border:none;background:none;width:40px;height:40px;border-radius:8px;font-size:18px}
+.log{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--ink);color:var(--bg);border-radius:14px;padding:10px 12px 10px 16px;display:flex;align-items:center;gap:12px;font-size:15px;max-width:calc(100% - 32px);box-shadow:0 6px 18px rgba(0,0,0,.2)}
+.toast button{border:none;background:none;color:var(--bg);font-weight:700;text-decoration:underline;padding:6px}
+.center{min-height:80vh;display:flex;flex-direction:column;justify-content:center;gap:16px;max-width:420px;margin:0 auto}
+.center h2{font-family:var(--display);font-size:28px;margin:0}
+@media (max-width:460px){.sync.ok,.sync.saving{font-size:0;gap:0}.card .nm{font-size:16px}.tico{width:34px;height:34px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="overlay" id="overlay" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" hidden><span id="toastMsg"></span><button type="button" id="toastBtn" hidden>Kumoa</button></div>
+
+<script>
+(function(){
+"use strict";
+/* =========================================================
+   Small helpers
+   ========================================================= */
+function $(s,r){return (r||document).querySelector(s);}
+function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function lsGet(k,d){try{var v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;}}
+function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+function pj(s){if(s&&typeof s==="object")return s;try{var o=JSON.parse(s||"{}");return o&&typeof o==="object"?o:{};}catch(e){return {};}}
+function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function cap(s){s=String(s||"").trim();return s.charAt(0).toUpperCase()+s.slice(1);}
+function norm(s){return String(s||"").trim().toLowerCase();}
+var DAY=864e5;
+function dayStart(t){var d=new Date(t);d.setHours(0,0,0,0);return d.getTime();}
+function daysBetween(a,b){return Math.round((dayStart(b)-dayStart(a))/DAY);}
+function fmtDate(t){var d=new Date(t);return d.getDate()+"."+(d.getMonth()+1)+".";}
+var EMBED=/[?&]embed=1/.test(location.search);
+var CK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>';
+function svg(p){return '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>';}
+var IC={
+  back:svg('<path d="M15 5l-7 7 7 7"/>'),
+  more:svg('<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>'),
+  close:svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+  search:svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>'),
+  shop:svg('<path d="M3 4h2l2.4 11h10.8l2-8H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>'),
+  pack:svg('<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18"/>'),
+  chores:svg('<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M21 4v5h-5"/><path d="M8.5 12l2.5 2.5 4.5-4.5"/>'),
+  wish:svg('<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12"/><path d="M12 8C10 4 6.5 4 6.5 6.5S12 8 12 8zm0 0c2-4 5.5-4 5.5-1.5S12 8 12 8z"/>'),
+  gift:svg('<path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.1A9.6 9.6 0 0 1 12 5c5 0 9 4.5 10 7a12.5 12.5 0 0 1-2.6 3.6M6.1 6.1C3.9 7.6 2.5 9.8 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.2-1"/>'),
+  basic:svg('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>'),
+  cart:svg('<path d="M3 4h2l2.4 11h10.8l2-8H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>'),
+  share:svg('<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>')
+};
+
+/* =========================================================
+   Domain knowledge: list types, store aisles, word→aisle dictionary,
+   packing templates and household chore templates
+   ========================================================= */
+var TYPES={
+  shop:{n:"Kauppalista",d:"Osastot, määrät, ehdotukset aiemmista ostoksista",ph:"Lisää ostos, esim. maito 2"},
+  pack:{n:"Pakkauslista",d:"Valmiit pohjat, kenen tavara, uudelleenkäyttö",ph:"Lisää tavara"},
+  chores:{n:"Kodin tehtävät",d:"Toistuvat askareet, vuorottelu ja tilasto",ph:""},
+  wish:{n:"Toivelista",d:"Muut voivat varata toiveen, omistaja ei näe varauksia",ph:"Lisää toive tai liitä linkki"},
+  gift:{n:"Lahjaideat",d:"Piilotettu valitulta henkilöltä",ph:"Lisää idea tai liitä linkki"},
+  basic:{n:"Tavallinen lista",d:"Yksinkertainen ruksattava lista",ph:"Lisää rivi"}
+};
+var TYPE_ORDER=["shop","pack","chores","wish","gift","basic"];
+var CATS=[
+  ["hev","Hedelmät ja vihannekset"],["lei","Leivät"],["liha","Liha, kala ja kasviproteiinit"],["mai","Maito, juusto ja munat"],
+  ["kuiva","Kuivatuotteet ja leivonta"],["sail","Säilykkeet ja kastikkeet"],["kahvi","Kahvi ja tee"],["herk","Herkut ja naposteltavat"],
+  ["juo","Juomat"],["pak","Pakasteet"],["lapsi","Lapset"],["lemmikki","Lemmikit"],["hyg","Hygienia ja apteekki"],["koti","Koti ja siivous"],["muu","Muut"]
+];
+var CATN={};CATS.forEach(function(c){CATN[c[0]]=c[1];});
+/* Typical walking order. Every store differs, so each list can reorder these. */
+var STORES={
+  prisma:{n:"Prisma / S-market",o:["hev","lei","liha","mai","pak","kuiva","sail","kahvi","herk","juo","lapsi","lemmikki","hyg","koti","muu"]},
+  k:{n:"K-kaupat",o:["hev","lei","liha","mai","kuiva","sail","kahvi","herk","juo","pak","lapsi","lemmikki","koti","hyg","muu"]}
+};
+var DICT={
+  hev:"omena banaani tomaatti kurkku peruna sipuli porkkana salaatti jäävuori paprika sitruuna lime appelsiini mandariini klementiini avokado marja mustikka mansikka vadelma puolukka kaali parsakaali kukkakaali kiinankaali valkosipuli inkivääri viinirypäle rypäle päärynä kiivi ananas meloni sieni herkkusieni kantarelli yrtti basilika persilja tilli korianteri ruohosipuli retiisi lanttu punajuuri kesäkurpitsa munakoiso pinaatti rucola vesimeloni nektariini persikka luumu granaattiomena mango papaija kaki selleri purjo fenkoli chili parsa maissintähkä herneenversot itu varhaisperuna bataatti hedelmä vihannes kirsikkatomaatti",
+  lei:"leipä ruisleipä sämpylä patonki paahtoleipä näkkileipä korppu pulla croissant tortilla pitaleipä hampurilaissämpylä karjalanpiirakka piirakka rieska kaurapala reissumies bagel focaccia wrap hapankorppu viipaleleipä",
+  liha:"jauheliha kana broileri kanafilee kanankoipi possu sianliha porsas nauta naudanliha härkä lihapulla nakki makkara grillimakkara kinkku leikkele pekoni lohi kala kirjolohi silakka seiti muikku katkarapu rapu simpukka tofu härkis nyhtökaura soijarouhe tempeh kebab suikale pihvi kassler maksa jauhis lihakastikeaines kalkkuna lammas riista poro savulohi graavilohi",
+  mai:"maito rasvaton kevytmaito täysmaito laktoositon kerma vispikerma ruokakerma jogurtti rahka viili voi margariini levite oivariini juusto emmental edam mozzarella parmesaani feta halloumi raejuusto tuorejuusto smetana ranskankerma kermaviili piimä kananmuna muna kaurajuoma mantelijuoma soijajuoma oatly kaurajogurtti vanukas maitorahka skyr kefiiri leipäjuusto mascarpone ricotta cheddar",
+  kuiva:"jauho vehnäjauho ruisjauho sokeri tomusokeri fariinisokeri suola pasta spagetti makaroni penne lasagnelevy riisi jasmiiniriisi kaurahiutale hiutale puuro mysli murot granola leivinjauhe ruokasooda hiiva kuivahiiva öljy rypsiöljy oliiviöljy mauste pippuri kaneli kardemumma paprikajauhe curry juustokumina oregano nuudeli couscous bulgur kvinoa linssi siemen auringonkukansiemen chia pellava pähkinä manteli rusina taateli hunaja siirappi etikka vaniljasokeri liivate perunajauho maizena korppujauho kaakaojauhe",
+  sail:"säilyke tomaattimurska passata tomaattipyre kastike ketsuppi sinappi majoneesi soija pesto hillo pastakastike kookosmaito tonnikala maissi kikherne kidneypapu papu liemikuutio fondi salsa marmeladi hapankaali pikkelsi kurkkusalaatti oliivi kapris aurinkokuivattu tacokastike currytahna sriracha tabasco grillikastike kastikejauhe",
+  kahvi:"kahvi suodatinkahvi pressokahvi espresso kahvikapseli tee vihreätee yrttitee kaakao suodatinpussi",
+  herk:"suklaa karkki makeinen sipsi perunalastu keksi pipari popcorn lakritsi salmiakki välipalapatukka proteiinipatukka patukka tikkari purukumi nachot naksu juustonaksu sipsit pikkuleipä vohveli munkki kakku täytekakku torttu dippi",
+  juo:"mehu täysmehu limsa vesi kivennäisvesi kivennäis olut siideri lonkero viini energiajuoma smoothie kokis cola sooda jaffa pillimehu urheilujuoma alkoholiton kotikalja",
+  pak:"pakaste jäätelö pakasteherne herne pakastevihannes wokkivihannes pakastemarja pakastepizza pizza ranskalaiset jää jääpala pakastekala kalapuikot lihapiirakka",
+  lapsi:"vaippa vauvanruoka sose lastensose välipalasose kosteuspyyhe tutti tuttipullo äidinmaidonkorvike korvike",
+  lemmikki:"kissanruoka koiranruoka kissanhiekka hiekka koiranherkku kissanherkku jyrsijä lintujenruoka talipallo",
+  hyg:"shampoo hoitoaine saippua käsisaippua hammastahna hammasharja hammaslanka deodorantti deodorant suihkusaippua vanulappu pumpuli vanupuikko partahöylä parranajo terä rasvavoide perusvoide aurinkorasva laastari särkylääke burana panadol kuumemittari siteet tamponi kuukupit meikki ripsiväri huulirasva kynsilakka hiuslakka hiusgeeli",
+  koti:"wc-paperi vessapaperi talouspaperi astianpesuaine tiskiaine konetiskiaine tiskitabletti pesuaine pyykinpesuaine pesujauhe huuhteluaine roskapussi jätesäkki biopussi folio leivinpaperi tuorekelmu pakastepussi minigrip kynttilä paristo lamppu tiskiharja tiskisieni tiskirätti siivousliina mikrokuituliina allaspuhdistaja wc-puhdistaja yleispuhdistaja ikkunanpesu lattianpesu kertakäyttö servetti lautaset muki pilli tulitikku sytytin grillihiili sytytysneste kukka multa"
+};
+var DICT_LIST=[];
+Object.keys(DICT).forEach(function(cat){DICT[cat].split(/\s+/).forEach(function(w){if(w&&w.length>2)DICT_LIST.push([w,cat]);});});
+DICT_LIST.sort(function(a,b){return b[0].length-a[0].length;});
+function guessCat(text){
+  var t=norm(text),h=histFor(text);
+  if(h&&h.cat&&CATN[h.cat])return h.cat;
+  for(var i=0;i<DICT_LIST.length;i++)if(t.indexOf(DICT_LIST[i][0])>=0)return DICT_LIST[i][1];
+  return "muu";
+}
+var UNITS="kpl|kg|g|l|dl|ml|pkt|prk|pss|rs|plo|tlk|nippu|kpl\\.";
+function parseQty(t){
+  t=String(t||"").trim();var m;
+  m=t.match(new RegExp("^(\\d+(?:[.,]\\d+)?)\\s*("+UNITS+")?\\.?\\s+(.+)$","i"));
+  if(m)return {text:cap(m[3]),qty:m[1]+(m[2]?" "+m[2].toLowerCase():"")};
+  m=t.match(new RegExp("^(.+?)\\s+(?:x|×)?\\s*(\\d+(?:[.,]\\d+)?)\\s*("+UNITS+")?\\.?$","i"));
+  if(m)return {text:cap(m[1]),qty:m[2]+(m[3]?" "+m[3].toLowerCase():"")};
+  return {text:cap(t),qty:""};
+}
+
+var PACK_TEMPLATES=[
+  {n:"Mökkiviikonloppu",g:[
+    ["Vaatteet",["Vaihtovaatteet","Sukat ja alusvaatteet","Lämmin villapaita","Sadetakki","Kumisaappaat","Pipo ja hanskat"]],
+    ["Sauna ja uinti",["Saunatakki","Pyyhkeet","Uima-asu","Saunajuomat"]],
+    ["Ruoka",["Aamupala-ainekset","Grillattavat","Kahvi ja suodatinpussit","Juomat","Eväät matkalle"]],
+    ["Tarvikkeet",["Lakanat ja tyynyliinat","Taskulamppu","Hyttyskarkote","Tulitikut","Laturit ja powerbank","Pelit ja kirjat"]],
+    ["Hygienia",["Hammasharjat ja -tahna","Shampoo","Lääkkeet","Aurinkorasva"]]]},
+  {n:"Ulkomaanmatka",g:[
+    ["Dokumentit",["Passit","Matkavakuutuskortit","Liput ja boarding passit","Pankkikortit ja käteinen","EU-sairaanhoitokortit","Ajokortti"]],
+    ["Elektroniikka",["Puhelinlaturit","Pistokeadapteri","Kuulokkeet","Powerbank"]],
+    ["Vaatteet",["Päivävaatteet","Iltavaatteet","Uima-asut","Aurinkolasit","Lippis tai hattu","Kävelykengät","Sandaalit"]],
+    ["Hygienia ja terveys",["Hammasharjat ja -tahna","Aurinkorasva","After sun","Lääkkeet ja reseptit","Laastarit","Matkapahoinvointilääke"]],
+    ["Matkalle mukaan",["Vesipullot","Eväät","Niskatyyny","Lukemista"]],
+    ["Ennen lähtöä",["Kukat kasteltu","Roskat viety","Jääkaappi tyhjennetty","Ikkunat ja ovet kiinni","Postin haku sovittu","Lähtöselvitys tehty"]]]},
+  {n:"Laskettelureissu",g:[
+    ["Rinteeseen",["Laskettelupuku","Kerrasto","Välikerrasto","Villasukat","Lapaset","Pipo tai kypärämyssy","Kypärä","Laskettelulasit","Kaulaliina tai tuubihuivi"]],
+    ["Välineet",["Sukset tai lauta","Monot","Sauvat","Hissikortti"]],
+    ["Iltaan",["Rennot vaatteet","Sisäkengät","Uima-asu"]],
+    ["Muuta",["Huulirasva","Pakkasvoide","Aurinkorasva","Lämpöpussit","Laturit"]]]},
+  {n:"Päiväretki luontoon",g:[
+    ["Eväät",["Eväät","Termospullo","Vesipullo","Makkarat ja tikut"]],
+    ["Varusteet",["Istuinalusta","Sadevaatteet","Vaihtosukat","Ensiapupakkaus","Puukko","Kartta tai offline-kartta","Taskulamppu"]],
+    ["Muuta",["Hyttyskarkote","Roskapussi","Powerbank"]]]},
+  {n:"Uimahalli tai treenit",g:[
+    ["Kassiin",["Uima-asu","Pyyhe","Uimalasit","Shampoo ja suihkusaippua","Kolikko kaappiin","Vesipullo","Välipala","Vaihtovaatteet"]]]},
+  {n:"Leirikoulu tai leiri",g:[
+    ["Nukkuminen",["Makuupussi","Tyyny ja tyynyliina","Makuualusta","Pehmolelu"]],
+    ["Vaatteet",["Vaihtovaatteet","Sukat ja alusvaatteet","Lämmin takki","Sadeasu","Pipo ja hanskat","Sisäkengät","Ulkokengät"]],
+    ["Muuta",["Hammasharja ja -tahna","Pyyhe","Vesipullo","Taskulamppu","Lääkkeet","Nimikoi tavarat"]]]}
+];
+var CHORE_TEMPLATES=[["Imurointi",7],["Lattioiden pesu",14],["Vessan pesu",7],["Kylpyhuoneen pesu",14],["Lakanoiden vaihto",14],["Roskien vienti",2],["Biojätteen vienti",3],
+  ["Astianpesukoneen tyhjennys",1],["Pyykit",3],["Kukkien kastelu",4],["Pölyjen pyyhintä",14],["Jääkaapin siivous",30],["Saunan pesu",30],["Ikkunoiden pesu",180],
+  ["Liesituulettimen suodatin",90],["Palovaroittimen testaus",30],["Mattojen tamppaus",60],["Kissanhiekan vaihto",3]];
+
+/* =========================================================
+   Data layer: cache, offline queue, sync
+   ========================================================= */
+var D={lists:[],items:[],history:[],settings:{}};
+var Q=[];                 /* changes waiting to be sent */
+var SYNC={state:"ok",msg:"",flushing:false,timer:0,retry:0,last:0};
+function configured(){return typeof BACKEND_URL==="string"&&/^https:\/\/script\.google\.com\//.test(BACKEND_URL);}
+function key(){return lsGet("familyKey","");}
+function me(){return lsGet("listat.me","");}
+function family(){return Array.isArray(D.settings.family)?D.settings.family:[];}
+function personColor(n){var f=family();for(var i=0;i<f.length;i++)if(f[i].name===n)return "var(--"+f[i].color+")";return "var(--n2)";}
+function avatar(n,sm){return '<span class="av'+(sm?" sm":"")+'" style="background:'+personColor(n)+'" title="'+esc(n)+'">'+esc((n||"?").charAt(0).toUpperCase())+'</span>';}
+
+function fromServer(res){
+  D.lists=(res.lists||[]).map(function(l){return {id:String(l.id),name:l.name||"Lista",ts:Number(l.ts)||0,type:l.type||"",d:pj(l.data)};});
+  D.items=(res.items||[]).map(function(i){return {id:String(i.id),list:String(i.list),text:i.text||"",done:i.done==="1"?"1":"",ts:Number(i.ts)||0,d:pj(i.data)};});
+  D.history=(res.history||[]).map(function(h){return {id:h.id,text:h.text,cat:h.cat,count:Number(h.count)||0,ts:Number(h.ts)||0,avg:Number(h.avg)||0};});
+  D.settings=res.settings||{};
+}
+function saveCache(){
+  clearTimeout(saveCache.t);
+  saveCache.t=setTimeout(function(){
+    lsSet("listat.cache",JSON.stringify({lists:D.lists.map(listRow),items:D.items.map(itemRow),history:D.history,settings:D.settings}));
+  },300);
+}
+function loadCache(){try{var c=JSON.parse(lsGet("listat.cache","")||"null");if(c){fromServer(c);return true;}}catch(e){}return false;}
+function saveQ(){lsSet("listat.q",JSON.stringify(Q));}
+function loadQ(){try{Q=JSON.parse(lsGet("listat.q","[]"))||[];}catch(e){Q=[];}}
+function listRow(l){return {id:l.id,name:l.name,ts:l.ts,type:l.type,data:JSON.stringify(l.d||{})};}
+function itemRow(i){return {id:i.id,list:i.list,text:i.text,done:i.done,ts:i.ts,data:JSON.stringify(i.d||{})};}
+
+function push(op){Q.push(op);saveQ();saveCache();setSync();clearTimeout(SYNC.timer);SYNC.timer=setTimeout(flush,500);}
+function upItem(it){push({op:"upsert",table:"items",row:itemRow(it)});}
+function upList(l){push({op:"upsert",table:"lists",row:listRow(l)});}
+
+function setSync(state,msg){
+  if(state)SYNC.state=state;if(msg!==undefined)SYNC.msg=msg;
+  var el=$("#sync");if(!el)return;
+  var s=SYNC.state,txt;
+  if(Q.length&&s!=="offline"&&s!=="error")s="saving";
+  if(s==="saving")txt="Tallennetaan…";
+  else if(s==="offline")txt="Ei yhteyttä"+(Q.length?" · "+Q.length+" odottaa":"");
+  else if(s==="error")txt=SYNC.msg||"Virhe";
+  else txt="Tallessa";
+  el.className="sync "+s;el.textContent=txt;
+}
+function post(body){
+  body.key=key();
+  return fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)})
+    .then(function(r){return r.text();}).then(function(t){var j;try{j=JSON.parse(t);}catch(e){throw new Error(/accounts\.google|sign in/i.test(t)?"login":"html");}return j;});
+}
+function errText(e){
+  var m=e&&e.message;
+  if(m==="key")return "Väärä perheen avain";
+  if(m==="login")return "Taustapalvelu vaatii kirjautumisen";
+  return "";
+}
+function flush(){
+  if(!configured()||!key()||SYNC.flushing||!Q.length)return;
+  SYNC.flushing=true;setSync("saving");
+  var batch=Q.slice(0,80);
+  post({op:"batch",ops:batch}).then(function(res){
+    SYNC.flushing=false;
+    if(!res||res.ok===false){var er=new Error(res&&res.error||"virhe");throw er;}
+    Q.splice(0,batch.length);saveQ();SYNC.retry=0;
+    if(Q.length){flush();return;}
+    fromServer(res);saveCache();SYNC.last=Date.now();setSync("ok");refresh();
+  }).catch(function(e){
+    SYNC.flushing=false;
+    var t=errText(e);
+    if(t){setSync("error",t);if(e.message==="key")askKeyScreen(true);return;}
+    setSync("offline");
+    SYNC.retry=Math.min((SYNC.retry||0)+1,6);
+    clearTimeout(SYNC.timer);SYNC.timer=setTimeout(flush,Math.min(60000,3000*Math.pow(2,SYNC.retry-1)));
+  });
+}
+function pull(){
+  if(!configured()||!key()||Q.length||SYNC.flushing)return Promise.resolve();
+  return fetch(BACKEND_URL+"?key="+encodeURIComponent(key())+"&t="+Date.now()).then(function(r){return r.text();})
+    .then(function(t){var j;try{j=JSON.parse(t);}catch(e){throw new Error(/accounts\.google|sign in/i.test(t)?"login":"html");}
+      if(!j||j.ok===false)throw new Error(j&&j.error||"virhe");
+      if(Q.length)return;              /* a local change arrived meanwhile; the next flush brings fresh data */
+      fromServer(j);saveCache();SYNC.last=Date.now();setSync("ok");refresh();})
+    .catch(function(e){var t=errText(e);if(t){setSync("error",t);if(e.message==="key")askKeyScreen(true);}else setSync("offline");});
+}
+window.addEventListener("online",function(){flush();pull();});
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"){flush();pull();}});
+setInterval(function(){if(document.visibilityState==="visible"){if(Q.length)flush();else pull();}},15000);
+
+/* =========================================================
+   Derived data
+   ========================================================= */
+function typeOf(l){if(TYPES[l.type])return l.type;var n=norm(l.name);if(/kauppa|ostos/.test(n))return "shop";if(/pakkaus/.test(n))return "pack";return "basic";}
+function visible(l){if(l.type==="kids"||(l.d&&l.d.template))return false;if(typeOf(l)==="gift"&&l.d.hideFrom&&l.d.hideFrom===me())return false;return true;}
+function listById(id){for(var i=0;i<D.lists.length;i++)if(D.lists[i].id===id)return D.lists[i];return null;}
+function itemsOf(id){return D.items.filter(function(i){return i.list===id;});}
+function histFor(text){var t=norm(text);for(var i=0;i<D.history.length;i++)if(norm(D.history[i].text)===t)return D.history[i];return null;}
+function storeOrder(l){var s=l.d.store||"prisma";var o=(l.d.orders&&l.d.orders[s])||STORES[s].o;var rest=CATS.map(function(c){return c[0];}).filter(function(k){return o.indexOf(k)<0;});return o.concat(rest);}
+function choreStatus(it){
+  var every=Number(it.d.every)||7,last=Number(it.d.last)||0,now=Date.now();
+  if(!last)return {due:0,days:0,label:"Ei vielä tehty",cls:"today"};
+  var dueAt=dayStart(last)+every*DAY,diff=daysBetween(now,dueAt);
+  if(daysBetween(last,now)===0)return {due:diff,days:diff,label:"Tehty tänään",cls:"okk"};
+  if(diff<0)return {due:diff,days:diff,label:"Myöhässä "+(-diff)+" pv",cls:"late"};
+  if(diff===0)return {due:0,days:0,label:"Tänään",cls:"today"};
+  if(diff===1)return {due:1,days:1,label:"Huomenna",cls:""};
+  return {due:diff,days:diff,label:diff+" pv päästä",cls:""};
+}
+function choreTurn(it){
+  var a=it.d.assign||"rot";if(a!=="rot")return a;
+  var f=family().map(function(x){return x.name;});if(!f.length)return "";
+  if(!it.d.doneBy){var h=0;for(var k=0;k<it.id.length;k++)h=(h*31+it.id.charCodeAt(k))>>>0;return f[h%f.length];}  /* spread first turns */
+  var i=f.indexOf(it.d.doneBy);return f[(i+1)%f.length]||f[0];
+}
+function everyLabel(n){n=Number(n)||7;if(n===1)return "päivittäin";if(n===7)return "viikoittain";if(n===14)return "joka 2. viikko";if(n===30)return "kuukausittain";return "joka "+n+". pv";}
+function summary(l){
+  var t=typeOf(l),its=itemsOf(l.id),open=its.filter(function(i){return i.done!=="1";});
+  if(t==="shop")return {txt:open.length?"<b>"+open.length+"</b> ostettavaa":"Kaikki ostettu",p:null};
+  if(t==="pack"){var dn=its.length-open.length;return {txt:its.length?"<b>"+dn+"/"+its.length+"</b> pakattu":"Tyhjä",p:its.length?dn/its.length:0};}
+  if(t==="chores"){var late=0,today=0;its.forEach(function(i){var s=choreStatus(i);if(s.cls==="late")late++;else if(s.cls==="today")today++;});
+    return {txt:late?'<span class="bad">'+late+' myöhässä</span>'+(today?" · "+today+" tänään":""):(today?"<b>"+today+"</b> tänään":"Kaikki ajallaan"),p:null};}
+  if(t==="wish"){var owner=l.d.owner===me(),res=its.filter(function(i){return i.d.reservedBy;}).length;
+    return {txt:"<b>"+its.length+"</b> toivetta"+(!owner&&res?" · "+res+" varattu":""),p:null};}
+  if(t==="gift")return {txt:"<b>"+its.length+"</b> ideaa"+(l.d.hideFrom?" · piilossa: "+esc(l.d.hideFrom):""),p:null};
+  var d2=its.length-open.length;return {txt:its.length?"<b>"+d2+"/"+its.length+"</b> tehty":"Tyhjä",p:its.length?d2/its.length:0};
+}
+
+/* =========================================================
+   Theme
+   ========================================================= */
+function applyTheme(){var t=lsGet("theme","auto");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.removeAttribute("data-theme");}
+
+/* =========================================================
+   Routing and rendering
+   ========================================================= */
+var VIEW={route:"",list:null,shopmode:false,q:"",packWho:"",packCat:""};
+function route(){var h=location.hash.replace(/^#/,"");if(h.indexOf("l-")===0)return {name:"list",id:h.slice(2)};if(h==="asetukset")return {name:"settings"};return {name:"home"};}
+function go(h){if(location.hash.replace(/^#/,"")===h)render();else location.hash=h;}
+window.addEventListener("hashchange",function(){closeSheet();render();});
+
+function headerHtml(left,title,right){
+  return '<header class="bar"><div class="wrap">'+left+'<h1>'+title+'</h1><span class="sync" id="sync"></span>'+right+'</div></header>';
+}
+function render(){
+  applyTheme();
+  var app=$("#app");
+  if(!configured()){app.innerHTML=setupHtml();return;}
+  if(!key()){askKeyScreen(false);return;}
+  if(!me()){whoScreen();return;}
+  var r=route();VIEW.route=r.name;
+  if(r.name==="list"){var l=listById(r.id);if(!l||!visible(l)){location.hash="";return;}VIEW.list=l.id;renderList(true);}
+  else if(r.name==="settings")renderSettings();
+  else renderHome(true);
+  setSync();
+}
+/* Data changed (sync or local edit): redraw only what depends on data, keep inputs and focus intact. */
+function refresh(){
+  if(!configured()||!key()||!me())return;
+  if(VIEW.route==="home")renderHome(false);
+  else if(VIEW.route==="list"){var l=listById(VIEW.list);if(!l||!visible(l)){location.hash="";return;}renderList(false);}
+  setSync();
+  if(sheetRefresh)sheetRefresh();
+}
+
+/* ---------- setup screens ---------- */
+function setupHtml(){
+  return '<div class="wrap"><div class="center"><h2>Osoite puuttuu</h2><p class="hint">Avaa GitHubissa tiedosto <b>config.js</b>, paina kynäkuvaketta ja liitä lainausmerkkien väliin Apps Scriptin osoite, joka päättyy <b>/exec</b>. Tallenna painamalla Commit changes ja avaa tämä sivu uudelleen minuutin päästä.</p></div></div>';
+}
+function askKeyScreen(wrong){
+  $("#app").innerHTML='<div class="wrap"><div class="center"><h2>Perheen avain</h2><p class="hint">Sama salasana kuin ilmoitustaululla. Laite muistaa sen.</p>'+
+    (wrong?'<p class="hint" style="color:var(--danger)">Avain ei kelpaa. Tarkista kirjoitusasu.</p>':"")+
+    '<div class="field"><label for="kIn">Avain</label><input id="kIn" type="password" autocomplete="current-password"></div><button class="btn primary" id="kGo" type="button">Jatka</button></div></div>';
+  var go2=function(){var v=$("#kIn").value.trim();if(!v)return;lsSet("familyKey",v);setSync("ok","");render();pull();flush();};
+  $("#kGo").onclick=go2;$("#kIn").addEventListener("keydown",function(e){if(e.key==="Enter")go2();});$("#kIn").focus();
+}
+function whoScreen(){
+  var f=family();
+  $("#app").innerHTML='<div class="wrap"><div class="center"><h2>Kuka olet?</h2><p class="hint">Tämän avulla näet, kuka lisäsi mitäkin, toivelistojen varaukset pysyvät yllätyksinä ja kotitöiden vuorot osuvat oikein. Valinta koskee vain tätä laitetta.</p>'+
+    (f.length?'<div class="chips">'+f.map(function(p){return '<button type="button" class="chip" data-who="'+esc(p.name)+'">'+avatar(p.name,true)+esc(p.name)+'</button>';}).join("")+'</div>':'<p class="hint">Perheenjäseniä ei ole vielä lisätty ilmoitustaulun asetuksissa. Kirjoita nimesi:</p>')+
+    '<div class="field"><label for="whoIn">'+(f.length?"Tai kirjoita nimi":"Nimi")+'</label><input id="whoIn" maxlength="20"></div><button class="btn primary" id="whoGo" type="button">Jatka</button></div></div>';
+  $$("[data-who]").forEach(function(b){b.onclick=function(){lsSet("listat.me",b.dataset.who);render();};});
+  var g=function(){var v=$("#whoIn").value.trim();if(!v)return;lsSet("listat.me",v);render();};
+  $("#whoGo").onclick=g;$("#whoIn").addEventListener("keydown",function(e){if(e.key==="Enter")g();});
+}
+
+/* ---------- home ---------- */
+function renderHome(full){
+  var app=$("#app");
+  if(full||!$("#homeBody")){
+    app.className="";
+    app.innerHTML=headerHtml(EMBED?'<button class="ib" data-act="embed-close" aria-label="Sulje">'+IC.close+'</button>':"",'Listat',
+      '<button class="av" data-act="settings" aria-label="Asetukset" style="background:'+personColor(me())+'">'+esc(me().charAt(0).toUpperCase())+'</button>')+
+      '<main class="wrap"><label class="search">'+IC.search+'<input id="q" type="search" placeholder="Hae kaikista listoista" value="'+esc(VIEW.q)+'" autocomplete="off"></label><div id="homeBody"></div></main>';
+    $("#q").addEventListener("input",function(){VIEW.q=this.value;renderHome(false);});
+  }
+  var lists=D.lists.filter(visible).sort(function(a,b){var ta=TYPE_ORDER.indexOf(typeOf(a)),tb=TYPE_ORDER.indexOf(typeOf(b));return ta-tb||a.ts-b.ts;});
+  var html="";
+  if(VIEW.q.trim().length>1){
+    var q=norm(VIEW.q),hits=D.items.filter(function(i){var l=listById(i.list);return l&&visible(l)&&norm(i.text).indexOf(q)>=0;}).slice(0,30);
+    html+='<div class="res">'+(hits.length?hits.map(function(i){var l=listById(i.list);return '<button type="button" data-act="open" data-id="'+esc(l.id)+'"><span>'+esc(i.text)+(i.done==="1"?' <span class="muted">(ruksattu)</span>':"")+'</span><span class="muted">'+esc(l.name)+'</span></button>';}).join(""):'<button type="button" disabled><span class="muted">Ei osumia</span></button>')+'</div>';
+  }
+  html+='<div class="cards">'+lists.map(function(l){var t=typeOf(l),s=summary(l);
+    return '<button type="button" class="card" data-act="open" data-id="'+esc(l.id)+'"><div class="top"><span class="tico">'+IC[t]+'</span><span class="nm">'+esc(l.name)+'</span></div>'+
+      (s.p!==null?'<div class="prog"><i style="width:'+Math.round(s.p*100)+'%"></i></div>':"")+'<div class="sum">'+s.txt+'</div></button>';}).join("")+
+    '<button type="button" class="card newcard" data-act="new-list">+ Uusi lista</button></div>';
+  if(!lists.length)html+='<p class="hint" style="margin-top:14px">Aloita luomalla ensimmäinen lista, esimerkiksi kauppalista tai kodin tehtävät.</p>';
+  var tpls=D.lists.filter(function(l){return l.d.template;});
+  if(tpls.length)html+='<div class="sec"><span class="lbl">Omat pakkauspohjat</span><div class="chips">'+tpls.map(function(l){return '<button type="button" class="chip" data-act="tpl-menu" data-id="'+esc(l.id)+'">'+esc(l.name)+' · '+itemsOf(l.id).length+'</button>';}).join("")+'</div></div>';
+  if(!EMBED&&!isStandalone()&&lsGet("listat.installHidden","")!=="1"){
+    html+='<div class="install"><h3>Asenna puhelimeen</h3>'+
+      (deferredInstall?'<button class="btn primary" data-act="install" type="button">Asenna sovellukseksi</button>':
+      '<p class="hint"><b>Android:</b> Chromen valikko ⋮ → <i>Asenna sovellus</i> tai <i>Lisää aloitusnäyttöön</i>.<br><b>iPhone:</b> Safarin Jaa-painike → <i>Lisää Koti-valikkoon</i>.</p>')+
+      '<p class="hint">Asennettuna listat aukeavat omasta kuvakkeesta ja toimivat myös ilman nettiä.</p><button class="linkbtn" data-act="install-hide" type="button" style="align-self:flex-start">Piilota</button></div>';
+  }
+  $("#homeBody").innerHTML=html;
+}
+
+/* ---------- list view ---------- */
+function renderList(full){
+  var l=listById(VIEW.list),t=typeOf(l),app=$("#app");
+  if(full||!$("#listBody")||app.dataset.list!==l.id){
+    app.dataset.list=l.id;VIEW.shopmode=false;VIEW.packWho="";
+    app.innerHTML=headerHtml('<button class="ib" data-act="back" aria-label="Takaisin">'+IC.back+'</button>','<button type="button" data-act="list-menu">'+esc(l.name)+'</button>',
+      '<button class="ib" data-act="list-menu" aria-label="Listan toiminnot">'+IC.more+'</button>')+
+      '<main class="wrap" id="listBody"></main>'+addbarHtml(l);
+    bindAddbar(l);
+  }else{
+    var h=$(".bar h1 button");if(h)h.textContent=l.name;
+  }
+  app.className=VIEW.shopmode?"shopmode":"";
+  var body="";
+  if(t==="shop")body=shopBody(l);else if(t==="pack")body=packBody(l);else if(t==="chores")body=choresBody(l);else if(t==="wish"||t==="gift")body=wishBody(l);else body=basicBody(l);
+  $("#listBody").innerHTML=body;
+  var sel=$("#addCat");if(sel&&t==="pack")fillPackCats(l,sel);
+}
+function itemRowHtml(i,opts){
+  opts=opts||{};
+  var sub=[];
+  if(i.d.note)sub.push(esc(i.d.note));
+  if(opts.person&&i.d.person)sub.push('<span class="tag"><span class="dot" style="background:'+personColor(i.d.person)+'"></span>'+esc(i.d.person)+'</span>');
+  if(opts.by&&i.d.by&&i.d.by!==me())sub.push('<span class="tag"><span class="dot" style="background:'+personColor(i.d.by)+'"></span>'+esc(i.d.by)+'</span>');
+  return '<div class="item'+(i.done==="1"?" done":"")+'"><button class="ck" type="button" data-act="toggle" data-id="'+esc(i.id)+'" aria-label="'+(i.done==="1"?"Poista ruksi":"Ruksaa")+'">'+CK+'</button>'+
+    '<button class="it" type="button" data-act="edit" data-id="'+esc(i.id)+'"><span class="t">'+esc(i.text)+(i.d.qty?'<span class="qty">'+esc(i.d.qty)+'</span>':"")+'</span>'+(sub.length?'<span class="s">'+sub.join("")+'</span>':"")+'</button>'+
+    (opts.noDel?"":'<button class="del" type="button" data-act="del" data-id="'+esc(i.id)+'" aria-label="Poista">&times;</button>')+'</div>';
+}
+
+/* shopping */
+function shopBody(l){
+  var its=itemsOf(l.id),open=its.filter(function(i){return i.done!=="1";}),done=its.filter(function(i){return i.done==="1";}).sort(function(a,b){return (b.d.doneAt||0)-(a.d.doneAt||0);});
+  var store=l.d.store||"prisma",html='<div class="tools">'+Object.keys(STORES).map(function(k){return '<button type="button" class="chip" data-act="store" data-s="'+k+'" aria-pressed="'+(store===k)+'">'+STORES[k].n+'</button>';}).join("")+
+    '<button type="button" class="chip'+(VIEW.shopmode?"":" ghost")+'" data-act="shopmode" aria-pressed="'+VIEW.shopmode+'">'+IC.cart+(VIEW.shopmode?"Kauppatila päällä":"Kauppatila")+'</button></div>';
+  if(its.length)html+='<div class="progline"><span>'+done.length+'/'+its.length+' ostettu</span><div class="prog"><i style="width:'+Math.round(done.length/its.length*100)+'%"></i></div></div>';
+  if(!VIEW.shopmode){
+    var onList={};open.forEach(function(i){onList[norm(i.text)]=1;});
+    var now=Date.now();
+    var running=D.history.filter(function(h){return h.count>=3&&h.avg>=1&&!onList[norm(h.text)]&&(now-h.ts)/DAY>=h.avg*0.9;}).sort(function(a,b){return (now-b.ts)/b.avg-(now-a.ts)/a.avg;}).slice(0,8);
+    var runIds={};running.forEach(function(h){runIds[h.id]=1;});
+    var freq=D.history.filter(function(h){return h.count>=2&&!onList[norm(h.text)]&&!runIds[h.id];}).sort(function(a,b){return b.count-a.count;}).slice(0,12);
+    if(running.length||freq.length){
+      html+='<div class="sugg">'+(running.length?'<span class="lbl">Loppumassa?</span><div class="row">'+running.map(function(h){return '<button type="button" class="chip" data-act="quick" data-t="'+esc(h.text)+'"><span class="plus">+</span>'+esc(h.text)+'</button>';}).join("")+'</div>':"")+
+        (freq.length?'<span class="lbl">Usein ostetut</span><div class="row">'+freq.map(function(h){return '<button type="button" class="chip ghost" data-act="quick" data-t="'+esc(h.text)+'"><span class="plus">+</span>'+esc(h.text)+'</button>';}).join("")+'</div>':"")+'</div>';
+    }
+  }
+  if(!open.length&&!done.length)return html+'<div class="empty">Lista on tyhjä. Kirjoita alas ostos, esimerkiksi <b>maito 2</b> tai <b>jauheliha 400 g</b>.<br>Voit myös liittää monta riviä kerralla, vaikka reseptin ainekset.</div>';
+  var order=storeOrder(l),groups={};
+  open.forEach(function(i){var c=i.d.cat&&CATN[i.d.cat]?i.d.cat:guessCat(i.text);(groups[c]=groups[c]||[]).push(i);});
+  order.forEach(function(c){var g=groups[c];if(!g)return;g.sort(function(a,b){return a.ts-b.ts;});
+    html+='<div class="group"><div class="ghead"><span class="lbl">'+esc(CATN[c])+'</span><span class="muted" style="font-size:13px">'+g.length+'</span></div><div class="items">'+g.map(function(i){return itemRowHtml(i,{by:true});}).join("")+'</div></div>';});
+  if(!open.length)html+='<div class="empty">Kaikki ostettu!</div>';
+  if(done.length&&!VIEW.shopmode)html+='<div class="donehead"><span class="lbl">Ostetut ('+done.length+')</span><button class="linkbtn" data-act="clear-done" type="button">Tyhjennä ostetut</button></div><div class="items">'+done.map(function(i){return itemRowHtml(i);}).join("")+'</div>';
+  else if(done.length)html+='<div class="donehead"><span class="lbl">'+done.length+' ostettu</span><button class="linkbtn" data-act="clear-done" type="button">Tyhjennä</button></div>';
+  return html;
+}
+/* packing */
+function packCatsOf(l){var seen=[],its=itemsOf(l.id).slice().sort(function(a,b){return a.ts-b.ts;});its.forEach(function(i){var c=i.d.cat||"Muut";if(seen.indexOf(c)<0)seen.push(c);});return seen;}
+function fillPackCats(l,sel){var cats=packCatsOf(l);if(cats.indexOf("Muut")<0)cats.push("Muut");var cur=VIEW.packCat&&cats.indexOf(VIEW.packCat)>=0?VIEW.packCat:cats[cats.length-1];
+  sel.innerHTML=cats.map(function(c){return '<option'+(c===cur?" selected":"")+'>'+esc(c)+'</option>';}).join("")+'<option value="__new">+ Uusi osasto…</option>';}
+function packBody(l){
+  var its=itemsOf(l.id),f=family(),who=VIEW.packWho;
+  var shown=its.filter(function(i){return !who||(who==="__shared"?!i.d.person:i.d.person===who);});
+  var dn=shown.filter(function(i){return i.done==="1";}).length;
+  var html='';
+  if(f.length)html+='<div class="tools"><button type="button" class="chip" data-act="packwho" data-w="" aria-pressed="'+(!who)+'">Kaikki</button>'+
+    f.map(function(p){return '<button type="button" class="chip" data-act="packwho" data-w="'+esc(p.name)+'" aria-pressed="'+(who===p.name)+'"><span class="dot" style="background:'+personColor(p.name)+'"></span>'+esc(p.name)+'</button>';}).join("")+
+    '<button type="button" class="chip" data-act="packwho" data-w="__shared" aria-pressed="'+(who==="__shared")+'">Yhteiset</button></div>';
+  if(shown.length)html+='<div class="progline"><span>'+dn+'/'+shown.length+' pakattu</span><div class="prog"><i style="width:'+Math.round(dn/shown.length*100)+'%"></i></div></div>';
+  if(!its.length)return html+'<div class="empty">Tyhjä pakkauslista. Lisää tavaroita alhaalta tai luo uusi lista valmiista pohjasta.</div>';
+  packCatsOf(l).forEach(function(c){var g=shown.filter(function(i){return (i.d.cat||"Muut")===c;}).sort(function(a,b){return a.ts-b.ts;});if(!g.length)return;
+    var gd=g.filter(function(i){return i.done==="1";}).length;
+    html+='<div class="group"><div class="ghead"><span class="lbl">'+esc(c)+'</span><span class="muted" style="font-size:13px">'+gd+'/'+g.length+'</span></div><div class="items">'+g.map(function(i){return itemRowHtml(i,{person:true});}).join("")+'</div></div>';});
+  if(dn&&dn===shown.length)html+='<div class="empty">Kaikki pakattu. Hyvää matkaa!</div>';
+  return html;
+}
+/* chores */
+function choresBody(l){
+  var its=itemsOf(l.id).slice(),now=new Date(),mStart=new Date(now.getFullYear(),now.getMonth(),1).getTime(),score={};
+  D.items.forEach(function(i){var li=listById(i.list);if(!li||typeOf(li)!=="chores")return;(i.d.log||[]).forEach(function(e){if(e.t>=mStart)score[e.w]=(score[e.w]||0)+1;});});
+  var html="",names=Object.keys(score).sort(function(a,b){return score[b]-score[a];});
+  var MON=["tammikuussa","helmikuussa","maaliskuussa","huhtikuussa","toukokuussa","kesäkuussa","heinäkuussa","elokuussa","syyskuussa","lokakuussa","marraskuussa","joulukuussa"];
+  if(names.length)html+='<div class="lbl" style="margin-bottom:6px">Tehty '+MON[now.getMonth()]+'</div><div class="score">'+names.map(function(n){return '<span class="s1">'+avatar(n,true)+esc(n)+' <b>'+score[n]+'</b></span>';}).join("")+'</div>';
+  if(!its.length)return html+'<div class="empty">Ei vielä tehtäviä. Paina <b>+ Uusi tehtävä</b> ja valitse valmiista, kuten imurointi tai lakanoiden vaihto.</div>';
+  its.sort(function(a,b){return choreStatus(a).due-choreStatus(b).due||a.ts-b.ts;});
+  html+='<div class="items">'+its.map(function(i){var s=choreStatus(i),turn=choreTurn(i),fixed=(i.d.assign||"rot")!=="rot";
+    return '<div class="chore"><button class="nm" type="button" data-act="edit" data-id="'+esc(i.id)+'">'+esc(i.text)+'</button>'+
+      '<button class="donebtn'+(s.cls==="okk"?" just":"")+'" type="button" data-act="chore-done" data-id="'+esc(i.id)+'">'+(s.cls==="okk"?"✓ Tehty":"Tehty")+'</button>'+
+      '<div class="meta"><span class="pill '+s.cls+'">'+s.label+'</span><span>'+everyLabel(i.d.every)+'</span>'+
+      (turn?'<span class="tag">'+avatar(turn,true)+(fixed?esc(turn):"Vuorossa: "+esc(turn))+'</span>':"")+
+      (i.d.doneBy&&i.d.last?'<span>Viimeksi '+esc(i.d.doneBy)+' '+fmtDate(i.d.last)+'</span>':"")+'</div></div>';}).join("")+'</div>';
+  return html;
+}
+/* wish lists and gift ideas */
+function wishBody(l){
+  var t=typeOf(l),owner=l.d.owner,isOwner=t==="wish"&&owner===me(),its=itemsOf(l.id).slice().sort(function(a,b){return (Number(b.d.prio)||0)-(Number(a.d.prio)||0)||a.ts-b.ts;});
+  var html="";
+  if(t==="wish")html+='<div class="banner">'+(owner?avatar(owner,true):"")+'<span>'+(isOwner?"Tämä on sinun toivelistasi. Muut voivat varata toiveita, mutta <b>sinä et näe varauksia</b>, joten lahjat pysyvät yllätyksinä.":(owner?esc(owner)+"n toivelista. Varaa toive, jonka aiot hankkia, niin muut näkevät sen olevan hoidossa. "+esc(owner)+" ei näe varauksia.":"Toivelista. Valitse listan omistaja listan toiminnoista."))+'</span></div>';
+  else html+='<div class="banner"><span>'+(l.d.hideFrom?"Lahjaideat on piilotettu henkilöltä <b>"+esc(l.d.hideFrom)+"</b>. Ruksaa idea, kun lahja on hankittu.":"Lahjaideat. Voit piilottaa listan joltakulta listan toiminnoista.")+'</span></div>';
+  if(!its.length)return html+'<div class="empty">Ei vielä mitään. Kirjoita alas toive tai liitä kaupan linkki.</div>';
+  html+='<div class="items">'+its.map(function(i){
+    var meta=[];if(Number(i.d.prio))meta.push('<span class="stars">'+"★★★".slice(0,Number(i.d.prio))+'</span>');
+    if(i.d.price)meta.push(esc(i.d.price));if(i.d.url)meta.push('<a href="'+esc(i.d.url)+'" target="_blank" rel="noopener">Avaa linkki</a>');if(i.d.note)meta.push(esc(i.d.note));
+    var right="";
+    if(t==="wish"&&!isOwner){var r=i.d.reservedBy;right=r===me()?'<button class="resv mine" type="button" data-act="reserve" data-id="'+esc(i.id)+'">Varattu sinulle</button>':(r?'<button class="resv other" type="button" disabled>Varattu ('+esc(r)+')</button>':'<button class="resv" type="button" data-act="reserve" data-id="'+esc(i.id)+'">Varaan</button>');}
+    else if(t==="gift")right='<button class="ck" type="button" data-act="toggle" data-id="'+esc(i.id)+'" aria-label="Hankittu" style="'+(i.done==="1"?"background:var(--accent);border-color:var(--accent)":"")+'">'+(i.done==="1"?CK.replace('stroke="currentColor"','stroke="currentColor" style="opacity:1"'):CK)+'</button>';
+    else right='<button class="del" type="button" data-act="del" data-id="'+esc(i.id)+'" aria-label="Poista">&times;</button>';
+    return '<div class="wish'+(t==="gift"&&i.done==="1"?" got":"")+'"><button class="nm" type="button" data-act="edit" data-id="'+esc(i.id)+'">'+esc(i.text)+'</button>'+right+(meta.length?'<div class="meta">'+meta.join("")+'</div>':"")+'</div>';}).join("")+'</div>';
+  return html;
+}
+/* plain checklist */
+function basicBody(l){
+  var its=itemsOf(l.id),open=its.filter(function(i){return i.done!=="1";}).sort(function(a,b){return a.ts-b.ts;}),done=its.filter(function(i){return i.done==="1";}).sort(function(a,b){return a.ts-b.ts;});
+  if(!its.length)return '<div class="empty">Tyhjä lista. Lisää rivejä alhaalta.</div>';
+  var html=open.length?'<div class="items">'+open.map(function(i){return itemRowHtml(i,{by:true});}).join("")+'</div>':'<div class="empty">Kaikki tehty!</div>';
+  if(done.length)html+='<div class="donehead"><span class="lbl">Tehdyt ('+done.length+')</span><button class="linkbtn" data-act="clear-done" type="button">Poista tehdyt</button></div><div class="items">'+done.map(function(i){return itemRowHtml(i);}).join("")+'</div>';
+  return html;
+}
+
+/* ---------- add bar ---------- */
+function addbarHtml(l){
+  var t=typeOf(l);
+  if(t==="chores")return '<button class="fab" type="button" data-act="chore-new">+ Uusi tehtävä</button>';
+  return '<div class="addbar"><div class="wrap"><div class="ac" id="ac" hidden></div><form id="addForm" autocomplete="off">'+
+    (t==="pack"?'<select id="addCat" aria-label="Osasto"></select>':"")+
+    '<input id="addIn" placeholder="'+esc(TYPES[t].ph)+'" enterkeyhint="done" autocomplete="off"><button class="addbtn" type="submit" aria-label="Lisää">+</button></form></div></div>';
+}
+function bindAddbar(l){
+  var f=$("#addForm");if(!f)return;
+  var inp=$("#addIn"),ac=$("#ac"),sel=$("#addCat");
+  f.onsubmit=function(e){e.preventDefault();addText(inp.value);inp.value="";ac.hidden=true;inp.focus();};
+  inp.addEventListener("paste",function(){setTimeout(function(){if(inp.value.indexOf("\n")>=0){addText(inp.value);inp.value="";}},0);});
+  if(sel)sel.onchange=function(){if(sel.value==="__new"){openNewCat(l);}else VIEW.packCat=sel.value;};
+  if(typeOf(l)==="shop"){
+    inp.addEventListener("input",function(){
+      var q=norm(inp.value);if(q.length<2){ac.hidden=true;return;}
+      var open={};itemsOf(l.id).forEach(function(i){if(i.done!=="1")open[norm(i.text)]=1;});
+      var m=D.history.filter(function(h){var t=norm(h.text);return t.indexOf(q)>=0&&!open[t];}).sort(function(a,b){var as=norm(a.text).indexOf(q)===0?0:1,bs=norm(b.text).indexOf(q)===0?0:1;return as-bs||b.count-a.count;}).slice(0,5);
+      if(!m.length){ac.hidden=true;return;}
+      ac.innerHTML=m.map(function(h){return '<button type="button" data-t="'+esc(h.text)+'"><span>'+esc(h.text)+'</span><small>'+esc(CATN[h.cat]||"")+'</small></button>';}).join("");ac.hidden=false;
+      $$("button",ac).forEach(function(b){b.onmousedown=function(e){e.preventDefault();};b.onclick=function(){addText(b.dataset.t);inp.value="";ac.hidden=true;inp.focus();};});
+    });
+    inp.addEventListener("blur",function(){setTimeout(function(){ac.hidden=true;},150);});
+  }
+}
+function openNewCat(l){
+  openSheet('<h3>Uusi osasto</h3><div class="field"><label for="ncIn">Osaston nimi</label><input id="ncIn" maxlength="30" placeholder="esim. Lasten tavarat"></div><div class="acts"><button class="btn" type="button" data-x="c">Peruuta</button><button class="btn primary" type="button" data-x="ok">Valitse</button></div>',function(s){
+    var ok=function(){var v=$("#ncIn",s).value.trim();if(!v)return;VIEW.packCat=v;closeSheet();var sel=$("#addCat");if(sel){fillPackCats(l,sel);if(!Array.prototype.some.call(sel.options,function(o){return o.text===v;})){var o=document.createElement("option");o.text=v;sel.insertBefore(o,sel.lastChild);}sel.value=v;}$("#addIn").focus();};
+    $('[data-x="c"]',s).onclick=function(){closeSheet();var sel=$("#addCat");if(sel)fillPackCats(l,sel);};$('[data-x="ok"]',s).onclick=ok;$("#ncIn",s).addEventListener("keydown",function(e){if(e.key==="Enter")ok();});});
+}
+function addText(raw){
+  var l=listById(VIEW.list);if(!l)return;var t=typeOf(l);
+  var lines=String(raw||"").split(/\r?\n/).map(function(x){return x.replace(/^[\s\-•*·]+/,"").trim();}).filter(Boolean).slice(0,60);
+  if(!lines.length)return;
+  var base=Date.now(),added=0;
+  lines.forEach(function(line,n){
+    var it={id:newId(),list:l.id,text:"",done:"",ts:base+n,d:{by:me()}};
+    if(t==="shop"){var p=parseQty(line);it.text=p.text;if(p.qty)it.d.qty=p.qty;it.d.cat=guessCat(p.text);
+      var dup=itemsOf(l.id).filter(function(x){return x.done!=="1"&&norm(x.text)===norm(it.text);})[0];
+      if(dup){if(p.qty){dup.d.qty=p.qty;upItem(dup);}toast(it.text+" on jo listalla");return;}}
+    else if(t==="pack"){it.text=cap(line);var sel=$("#addCat");it.d.cat=sel&&sel.value!=="__new"?sel.value:(VIEW.packCat||"Muut");if(VIEW.packWho&&VIEW.packWho!=="__shared")it.d.person=VIEW.packWho;}
+    else if(t==="wish"||t==="gift"){if(/^https?:\/\//i.test(line)){it.d.url=line;try{it.text=cap(new URL(line).hostname.replace(/^www\./,""));}catch(e){it.text="Linkki";}}else it.text=cap(line);}
+    else it.text=cap(line);
+    D.items.push(it);upItem(it);added++;
+  });
+  if(added>1)toast(added+" riviä lisätty");
+  renderList(false);
+}
+
+/* ---------- settings ---------- */
+function renderSettings(){
+  var app=$("#app"),theme=lsGet("theme","auto");app.className="";
+  app.innerHTML=headerHtml('<button class="ib" data-act="back" aria-label="Takaisin">'+IC.back+'</button>','Asetukset',"")+
+    '<main class="wrap" style="display:flex;flex-direction:column;gap:22px">'+
+    '<div class="field"><span class="flabel">Kuka olet tällä laitteella</span><div class="chips">'+family().map(function(p){return '<button type="button" class="chip" data-act="set-me" data-w="'+esc(p.name)+'" aria-pressed="'+(me()===p.name)+'">'+avatar(p.name,true)+esc(p.name)+'</button>';}).join("")+
+      '<button type="button" class="chip ghost" data-act="set-me-other">Muu nimi…</button></div><p class="hint">Nyt: <b>'+esc(me())+'</b>. Perheenjäsenet ja värit lisätään ilmoitustaulun asetuksissa.</p></div>'+
+    '<div class="field"><span class="flabel">Teema</span><div class="chips">'+[["auto","Puhelimen mukaan"],["light","Vaalea"],["dark","Tumma"]].map(function(t){return '<button type="button" class="chip" data-act="theme" data-t="'+t[0]+'" aria-pressed="'+(theme===t[0])+'">'+t[1]+'</button>';}).join("")+'</div><p class="hint">Valinta koskee myös ilmoitustaulua, jos se on auki samalla laitteella.</p></div>'+
+    '<div class="field"><span class="flabel">Tallennus</span><p class="hint">'+(Q.length?Q.length+" muutosta odottaa lähetystä. ":"Kaikki muutokset tallessa. ")+(SYNC.last?"Viimeksi haettu klo "+new Date(SYNC.last).toLocaleTimeString("fi-FI",{hour:"2-digit",minute:"2-digit"})+".":"")+'</p><div class="chips"><button class="btn" type="button" data-act="sync-now">Päivitä nyt</button></div></div>'+
+    '<div class="field"><span class="flabel">Ostohistoria</span><p class="hint">Sovellus muistaa '+D.history.length+' tuotetta ehdotuksia, osastoja ja ostovälejä varten. Tiedot ovat perheen Google-taulukon välilehdellä <i>history</i>.</p></div>'+
+    '<div class="field"><span class="flabel">Ilmoitustaulu</span><div class="chips"><a class="btn" href="index.html">Avaa ilmoitustaulu</a></div></div>'+
+    '<div class="field"><span class="flabel">Perheen avain</span><div class="chips"><button class="btn danger" type="button" data-act="forget-key">Unohda avain tältä laitteelta</button></div></div>'+
+    '</main>';
+  setSync();
+}
+
+/* =========================================================
+   Sheets (bottom panels)
+   ========================================================= */
+var sheetRefresh=null;
+function openSheet(html,bind,onRefresh){var s=$("#sheet");s.innerHTML=html;$("#overlay").hidden=false;sheetRefresh=onRefresh||null;bind(s);}
+function closeSheet(){$("#overlay").hidden=true;$("#sheet").innerHTML="";sheetRefresh=null;}
+$("#overlay").addEventListener("click",function(e){if(e.target.id==="overlay")closeSheet();});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!$("#overlay").hidden)closeSheet();});
+function confirmBtn(btn,fn){btn.onclick=function(){if(btn.dataset.sure!=="1"){btn.dataset.sure="1";btn.textContent="Vahvista";return;}fn();};}
+function familyOptions(sel,extra){var f=family().map(function(p){return p.name;});if(me()&&f.indexOf(me())<0)f.push(me());return (extra||"")+f.map(function(n){return '<option'+(n===sel?" selected":"")+'>'+esc(n)+'</option>';}).join("");}
+
+function newListSheet(){
+  var type="shop";
+  openSheet('<h3>Uusi lista</h3><div class="typegrid">'+TYPE_ORDER.map(function(t){return '<button type="button" class="typebtn" data-t="'+t+'" aria-pressed="'+(t===type)+'"><span class="tico" style="width:32px;height:32px">'+IC[t]+'</span><b>'+TYPES[t].n+'</b><span>'+TYPES[t].d+'</span></button>';}).join("")+'</div><div id="nlMore"></div>'+
+    '<div class="acts"><button class="btn" type="button" data-x="c">Peruuta</button><button class="btn primary" type="button" data-x="ok">Luo lista</button></div>',
+  function(s){
+    var more=$("#nlMore",s),tplPick="";
+    function draw(){
+      $$(".typebtn",s).forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.t===type));});
+      var h='<div class="field"><label for="nlName">Nimi</label><input id="nlName" maxlength="40" value="'+esc(TYPES[type].n)+'"></div>';
+      if(type==="pack"){var own=D.lists.filter(function(l){return l.d.template;});
+        h+='<div class="field"><span class="flabel">Aloita pohjasta</span><div class="chips"><button type="button" class="chip" data-tpl="" aria-pressed="'+(!tplPick)+'">Tyhjä lista</button>'+
+          PACK_TEMPLATES.map(function(t,i){return '<button type="button" class="chip" data-tpl="b'+i+'" aria-pressed="'+(tplPick==="b"+i)+'">'+esc(t.n)+'</button>';}).join("")+
+          own.map(function(l){return '<button type="button" class="chip" data-tpl="o'+esc(l.id)+'" aria-pressed="'+(tplPick==="o"+l.id)+'">'+esc(l.name)+' (oma)</button>';}).join("")+'</div></div>';}
+      if(type==="chores")h+='<div class="field"><span class="flabel">Valitse tehtävät (voit lisätä myöhemmin lisää)</span><div class="chips" id="chPick">'+CHORE_TEMPLATES.map(function(c,i){return '<button type="button" class="chip" data-c="'+i+'" aria-pressed="'+(i<6)+'">'+esc(c[0])+' <span class="muted" style="font-size:12px">'+everyLabel(c[1])+'</span></button>';}).join("")+'</div></div>';
+      if(type==="wish")h+='<div class="field"><label for="nlOwner">Kenen toivelista</label><select id="nlOwner">'+familyOptions(me())+'</select></div>';
+      if(type==="gift")h+='<div class="field"><label for="nlHide">Piilota henkilöltä</label><select id="nlHide"><option value="">Ei keneltäkään</option>'+familyOptions("")+'</select><p class="hint">Lista ei näy hänen puhelimessaan eikä ilmoitustaululla hänen valitsemanaan. Tämä on kohteliaisuuspiilotus, ei salaus.</p></div>';
+      more.innerHTML=h;
+      $$("[data-tpl]",s).forEach(function(b){b.onclick=function(){tplPick=b.dataset.tpl;var nm=$("#nlName",s);
+        if(tplPick.charAt(0)==="b")nm.value=PACK_TEMPLATES[+tplPick.slice(1)].n;else if(tplPick.charAt(0)==="o"){var tl=listById(tplPick.slice(1));if(tl)nm.value=tl.name;}else nm.value=TYPES.pack.n;
+        $$("[data-tpl]",s).forEach(function(x){x.setAttribute("aria-pressed",String(x===b));});};});
+      $$("#chPick [data-c]",s).forEach(function(b){b.onclick=function(){b.setAttribute("aria-pressed",String(b.getAttribute("aria-pressed")!=="true"));};});
+    }
+    $$(".typebtn",s).forEach(function(b){b.onclick=function(){type=b.dataset.t;tplPick="";draw();};});
+    $('[data-x="c"]',s).onclick=closeSheet;
+    $('[data-x="ok"]',s).onclick=function(){
+      var name=$("#nlName",s).value.trim()||TYPES[type].n;
+      var l={id:newId(),name:name,ts:Date.now(),type:type,d:{}};
+      if(type==="shop")l.d.store="prisma";
+      if(type==="wish")l.d.owner=$("#nlOwner",s).value;
+      if(type==="gift")l.d.hideFrom=$("#nlHide",s).value;
+      D.lists.push(l);upList(l);
+      var base=Date.now(),n=0;
+      function addI(text,d){var it={id:newId(),list:l.id,text:text,done:"",ts:base+(n++),d:d||{}};D.items.push(it);upItem(it);}
+      if(type==="pack"&&tplPick){
+        if(tplPick.charAt(0)==="b")PACK_TEMPLATES[+tplPick.slice(1)].g.forEach(function(g){g[1].forEach(function(x){addI(x,{cat:g[0]});});});
+        else itemsOf(tplPick.slice(1)).slice().sort(function(a,b){return a.ts-b.ts;}).forEach(function(i){addI(i.text,{cat:i.d.cat||"Muut",person:i.d.person||""});});
+      }
+      if(type==="chores")$$("#chPick [data-c]",s).forEach(function(b){if(b.getAttribute("aria-pressed")==="true"){var c=CHORE_TEMPLATES[+b.dataset.c];addI(c[0],{every:c[1],assign:"rot",log:[]});}});
+      closeSheet();go("l-"+l.id);
+    };
+    draw();
+  });
+}
+
+function listMenu(){
+  var l=listById(VIEW.list),t=typeOf(l),its=itemsOf(l.id);
+  var opts=[["rename","Nimeä uudelleen"]];
+  if(t==="shop")opts.push(["order","Muokkaa osastojen järjestystä ("+STORES[l.d.store||"prisma"].n+")"]);
+  if(t==="pack"){opts.push(["uncheck","Aloita alusta (poista kaikki ruksit)"]);opts.push(["save-tpl","Tallenna omaksi pohjaksi"]);}
+  if(t==="wish")opts.push(["owner","Vaihda omistaja"]);
+  if(t==="gift")opts.push(["hide","Vaihda keneltä piilotetaan"]);
+  if(t==="shop"||t==="basic"||t==="pack"||t==="gift")opts.push(["clear","Poista ruksatut rivit"]);
+  opts.push(["share","Jaa tai kopioi tekstinä"]);
+  openSheet('<h3>'+esc(l.name)+'</h3><div class="menu">'+opts.map(function(o){return '<button type="button" data-m="'+o[0]+'">'+o[1]+'</button>';}).join("")+'<button type="button" class="danger" data-m="delete">Poista lista</button></div><div class="acts"><button class="btn" type="button" data-x="c">Sulje</button></div>',
+  function(s){
+    $('[data-x="c"]',s).onclick=closeSheet;
+    $$("[data-m]",s).forEach(function(b){var m=b.dataset.m;
+      if(m==="delete"){confirmBtn(b,function(){var keep=listRow(l),kept=its.map(itemRow);D.lists=D.lists.filter(function(x){return x.id!==l.id;});D.items=D.items.filter(function(x){return x.list!==l.id;});
+        push({op:"delete",table:"lists",id:l.id});closeSheet();location.hash="";
+        toast("Lista poistettu",function(){var nl={id:keep.id,name:keep.name,ts:keep.ts,type:keep.type,d:pj(keep.data)};D.lists.push(nl);upList(nl);kept.forEach(function(r){var it={id:r.id,list:r.list,text:r.text,done:r.done,ts:r.ts,d:pj(r.data)};D.items.push(it);upItem(it);});refresh();});});return;}
+      b.onclick=function(){
+        if(m==="rename")return renameSheet(l);
+        if(m==="order")return orderSheet(l);
+        if(m==="owner"||m==="hide")return personPickSheet(l,m);
+        if(m==="uncheck"){its.forEach(function(i){if(i.done==="1"){i.done="";}});push({op:"uncheckAll",list:l.id});closeSheet();renderList(false);toast("Ruksit poistettu");return;}
+        if(m==="clear"){clearDone(l);closeSheet();return;}
+        if(m==="save-tpl"){var tl={id:newId(),name:l.name,ts:Date.now(),type:"pack",d:{template:true}};D.lists.push(tl);upList(tl);var b2=Date.now();
+          its.slice().sort(function(a,c){return a.ts-c.ts;}).forEach(function(i,k){var it={id:newId(),list:tl.id,text:i.text,done:"",ts:b2+k,d:{cat:i.d.cat||"Muut",person:i.d.person||""}};D.items.push(it);upItem(it);});
+          closeSheet();toast("Tallennettu pohjaksi. Löytyy uutta pakkauslistaa luodessa.");return;}
+        if(m==="share"){closeSheet();shareList(l);return;}
+      };});
+  });
+}
+function renameSheet(l){
+  openSheet('<h3>Nimeä lista</h3><div class="field"><label for="rnIn">Nimi</label><input id="rnIn" maxlength="40" value="'+esc(l.name)+'"></div><div class="acts"><button class="btn" type="button" data-x="c">Peruuta</button><button class="btn primary" type="button" data-x="ok">Tallenna</button></div>',function(s){
+    var ok=function(){var v=$("#rnIn",s).value.trim();if(!v)return;l.name=v;upList(l);closeSheet();refresh();};
+    $('[data-x="c"]',s).onclick=closeSheet;$('[data-x="ok"]',s).onclick=ok;$("#rnIn",s).addEventListener("keydown",function(e){if(e.key==="Enter")ok();});$("#rnIn",s).select();});
+}
+function personPickSheet(l,m){
+  var isOwner=m==="owner";
+  openSheet('<h3>'+(isOwner?"Kenen toivelista":"Piilota henkilöltä")+'</h3><div class="field"><select id="ppSel">'+(isOwner?"":'<option value="">Ei keneltäkään</option>')+familyOptions(isOwner?l.d.owner:l.d.hideFrom)+'</select></div><div class="acts"><button class="btn" type="button" data-x="c">Peruuta</button><button class="btn primary" type="button" data-x="ok">Tallenna</button></div>',function(s){
+    $('[data-x="c"]',s).onclick=closeSheet;$('[data-x="ok"]',s).onclick=function(){var v=$("#ppSel",s).value;if(isOwner)l.d.owner=v;else l.d.hideFrom=v;upList(l);closeSheet();refresh();};});
+}
+function orderSheet(l){
+  var store=l.d.store||"prisma",order=storeOrder(l).slice();
+  openSheet('<h3>Osastojen järjestys</h3><p class="hint">Järjestä osastot siihen järjestykseen, jossa kuljet kaupassa ('+STORES[store].n+').</p><div class="ord" id="ord"></div><div class="acts"><button class="btn left" type="button" data-x="reset">Palauta oletus</button><button class="btn" type="button" data-x="c">Peruuta</button><button class="btn primary" type="button" data-x="ok">Tallenna</button></div>',function(s){
+    function draw(){$("#ord",s).innerHTML=order.map(function(k,i){return '<div class="r"><span>'+esc(CATN[k])+'</span><button type="button" data-u="'+i+'" aria-label="Ylös"'+(i===0?" disabled":"")+'>↑</button><button type="button" data-d="'+i+'" aria-label="Alas"'+(i===order.length-1?" disabled":"")+'>↓</button></div>';}).join("");
+      $$("[data-u]",s).forEach(function(b){b.onclick=function(){var i=+b.dataset.u;var x=order[i];order[i]=order[i-1];order[i-1]=x;draw();};});
+      $$("[data-d]",s).forEach(function(b){b.onclick=function(){var i=+b.dataset.d;var x=order[i];order[i]=order[i+1];order[i+1]=x;draw();};});}
+    $('[data-x="reset"]',s).onclick=function(){order=STORES[store].o.slice();draw();};
+    $('[data-x="c"]',s).onclick=closeSheet;
+    $('[data-x="ok"]',s).onclick=function(){l.d.orders=l.d.orders||{};l.d.orders[store]=order;upList(l);closeSheet();renderList(false);};
+    draw();});
+}
+
+function editSheet(id){
+  var it=null;for(var k=0;k<D.items.length;k++)if(D.items[k].id===id)it=D.items[k];if(!it)return;
+  var l=listById(it.list),t=typeOf(l),h='<h3>Muokkaa</h3><div class="field"><label for="eText">'+(t==="chores"?"Tehtävä":"Nimi")+'</label><input id="eText" maxlength="120" value="'+esc(it.text)+'"></div>';
+  if(t==="shop")h+='<div class="row2"><div class="field"><label for="eQty">Määrä</label><input id="eQty" maxlength="20" value="'+esc(it.d.qty||"")+'" placeholder="esim. 2 tai 400 g"></div><div class="field"><label for="eCat">Osasto</label><select id="eCat">'+CATS.map(function(c){return '<option value="'+c[0]+'"'+((it.d.cat||"muu")===c[0]?" selected":"")+'>'+esc(c[1])+'</option>';}).join("")+'</select></div></div>';
+  if(t==="pack")h+='<div class="row2"><div class="field"><label for="eCat2">Osasto</label><input id="eCat2" list="catList" value="'+esc(it.d.cat||"Muut")+'"><datalist id="catList">'+packCatsOf(l).map(function(c){return '<option value="'+esc(c)+'">';}).join("")+'</datalist></div><div class="field"><label for="ePerson">Kenen</label><select id="ePerson">'+familyOptions(it.d.person,'<option value="">Yhteinen</option>')+'</select></div></div>';
+  if(t==="chores"){
+    h+='<div class="field"><span class="flabel">Kuinka usein</span><div class="chips" id="evChips">'+[1,2,3,7,14,30,90].map(function(n){return '<button type="button" class="chip" data-ev="'+n+'" aria-pressed="'+(Number(it.d.every)===n)+'">'+everyLabel(n)+'</button>';}).join("")+'</div><div class="row2"><div class="field"><label for="eEvery">Päivinä</label><input id="eEvery" type="number" min="1" max="365" inputmode="numeric" value="'+esc(it.d.every||7)+'"></div>'+
+      '<div class="field"><label for="eAssign">Kuka tekee</label><select id="eAssign"><option value="rot"'+((it.d.assign||"rot")==="rot"?" selected":"")+'>Vuorotellen</option>'+familyOptions(it.d.assign==="rot"?"":it.d.assign)+'</select></div></div></div>';
+    var log=(it.d.log||[]).slice(-6).reverse();
+    h+='<div class="field"><span class="flabel">Historia</span><div class="log">'+(log.length?log.map(function(e){return '<span>'+fmtDate(e.t)+' · '+esc(e.w)+'</span>';}).join(""):"<span>Ei vielä merkintöjä</span>")+'</div></div>';
+  }
+  if(t==="wish"||t==="gift")h+='<div class="field"><label for="eUrl">Linkki</label><input id="eUrl" type="url" inputmode="url" value="'+esc(it.d.url||"")+'" placeholder="https://"></div><div class="row2"><div class="field"><label for="ePrice">Hinta</label><input id="ePrice" maxlength="20" value="'+esc(it.d.price||"")+'" placeholder="esim. 25 €"></div>'+
+    '<div class="field"><label for="ePrio">Tärkeys</label><select id="ePrio">'+[["0","–"],["1","★"],["2","★★"],["3","★★★ Eniten toivottu"]].map(function(p){return '<option value="'+p[0]+'"'+(String(it.d.prio||"0")===p[0]?" selected":"")+'>'+p[1]+'</option>';}).join("")+'</select></div></div>';
+  h+='<div class="field"><label for="eNote">Lisätieto</label><input id="eNote" maxlength="120" value="'+esc(it.d.note||"")+'" placeholder="'+(t==="shop"?"esim. laktoositon, iso pakkaus":"")+'"></div>';
+  var others=D.lists.filter(function(x){return x.id!==l.id&&visible(x)&&typeOf(x)!=="chores";});
+  if(others.length&&t!=="chores")h+='<div class="field"><label for="eMove">Siirrä listalle</label><select id="eMove"><option value="">Pysyy tällä listalla</option>'+others.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>';}).join("")+'</select></div>';
+  if(it.d.by)h+='<p class="hint">Lisännyt '+esc(it.d.by)+(it.ts?" "+fmtDate(it.ts):"")+'</p>';
+  h+='<div class="acts"><button class="btn danger left" type="button" data-x="del">Poista</button><button class="btn" type="button" data-x="c">Peruuta</button><button class="btn primary" type="button" data-x="ok">Tallenna</button></div>';
+  openSheet(h,function(s){
+    $$("#evChips [data-ev]",s).forEach(function(b){b.onclick=function(){$("#eEvery",s).value=b.dataset.ev;$$("#evChips [data-ev]",s).forEach(function(x){x.setAttribute("aria-pressed",String(x===b));});};});
+    $('[data-x="c"]',s).onclick=closeSheet;
+    confirmBtn($('[data-x="del"]',s),function(){closeSheet();delItem(it.id);});
+    $('[data-x="ok"]',s).onclick=function(){
+      var v=$("#eText",s).value.trim();if(!v)return $("#eText",s).focus();it.text=v;
+      if(t==="shop"){it.d.qty=$("#eQty",s).value.trim();var nc=$("#eCat",s).value;if(nc!==it.d.cat){it.d.cat=nc;push({op:"hist",text:it.text,cat:nc,learn:true});var hh=histFor(it.text);if(hh)hh.cat=nc;else D.history.push({id:norm(it.text),text:it.text,cat:nc,count:0,ts:0,avg:0});}}
+      if(t==="pack"){it.d.cat=$("#eCat2",s).value.trim()||"Muut";it.d.person=$("#ePerson",s).value;}
+      if(t==="chores"){it.d.every=Math.max(1,Math.min(365,parseInt($("#eEvery",s).value,10)||7));it.d.assign=$("#eAssign",s).value;}
+      if(t==="wish"||t==="gift"){var u=$("#eUrl",s).value.trim();if(u&&!/^https?:\/\//i.test(u))u="https://"+u;it.d.url=u;it.d.price=$("#ePrice",s).value.trim();it.d.prio=$("#ePrio",s).value;}
+      it.d.note=$("#eNote",s).value.trim();
+      var mv=$("#eMove",s);if(mv&&mv.value){var nl=listById(mv.value);it.list=mv.value;if(typeOf(nl)==="shop"&&!CATN[it.d.cat])it.d.cat=guessCat(it.text);if(typeOf(nl)==="pack"&&!it.d.cat)it.d.cat="Muut";toast("Siirretty listalle "+nl.name);}
+      upItem(it);closeSheet();refresh();
+    };
+  });
+}
+function choreNewSheet(){
+  var l=listById(VIEW.list),have={};itemsOf(l.id).forEach(function(i){have[norm(i.text)]=1;});
+  var picks=CHORE_TEMPLATES.filter(function(c){return !have[norm(c[0])];});
+  openSheet('<h3>Uusi tehtävä</h3>'+(picks.length?'<div class="field"><span class="flabel">Valmiit</span><div class="chips">'+picks.map(function(c){return '<button type="button" class="chip" data-p="'+esc(c[0])+'" data-e="'+c[1]+'">'+esc(c[0])+'</button>';}).join("")+'</div></div>':"")+
+    '<div class="field"><label for="cnName">Tai oma tehtävä</label><input id="cnName" maxlength="60" placeholder="esim. Auton imurointi"></div>'+
+    '<div class="field"><span class="flabel">Kuinka usein</span><div class="chips" id="cnEv">'+[1,2,3,7,14,30,90].map(function(n){return '<button type="button" class="chip" data-ev="'+n+'" aria-pressed="'+(n===7)+'">'+everyLabel(n)+'</button>';}).join("")+'</div></div>'+
+    '<div class="field"><label for="cnAssign">Kuka tekee</label><select id="cnAssign"><option value="rot">Vuorotellen</option>'+familyOptions("")+'</select></div>'+
+    '<div class="acts"><button class="btn" type="button" data-x="c">Peruuta</button><button class="btn primary" type="button" data-x="ok">Lisää</button></div>',function(s){
+    var every=7;
+    function setEv(n){every=n;$$("#cnEv [data-ev]",s).forEach(function(x){x.setAttribute("aria-pressed",String(+x.dataset.ev===n));});}
+    $$("#cnEv [data-ev]",s).forEach(function(b){b.onclick=function(){setEv(+b.dataset.ev);};});
+    $$("[data-p]",s).forEach(function(b){b.onclick=function(){$("#cnName",s).value=b.dataset.p;setEv(+b.dataset.e);};});
+    $('[data-x="c"]',s).onclick=closeSheet;
+    $('[data-x="ok"]',s).onclick=function(){var v=$("#cnName",s).value.trim();if(!v)return $("#cnName",s).focus();
+      var it={id:newId(),list:l.id,text:cap(v),done:"",ts:Date.now(),d:{every:every,assign:$("#cnAssign",s).value,log:[],by:me()}};D.items.push(it);upItem(it);closeSheet();renderList(false);};
+  });
+}
+
+/* =========================================================
+   Actions
+   ========================================================= */
+var undoFn=null;
+function toast(msg,undo){var t=$("#toast");$("#toastMsg").textContent=msg;undoFn=undo||null;$("#toastBtn").hidden=!undo;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){t.hidden=true;undoFn=null;},undo?6000:2800);}
+$("#toastBtn").onclick=function(){var f=undoFn;$("#toast").hidden=true;undoFn=null;if(f)f();};
+function findItem(id){for(var i=0;i<D.items.length;i++)if(D.items[i].id===id)return D.items[i];return null;}
+function toggle(id){
+  var it=findItem(id);if(!it)return;var l=listById(it.list),t=typeOf(l);
+  it.done=it.done==="1"?"":"1";
+  if(it.done==="1"){it.d.doneAt=Date.now();it.d.doneBy=me();if(navigator.vibrate)try{navigator.vibrate(12);}catch(e){}
+    if(t==="shop"){push({op:"hist",text:it.text,cat:it.d.cat||""});var h=histFor(it.text),now=Date.now();
+      if(h){var gap=h.ts?(now-h.ts)/DAY:0;if(gap>0.5){h.avg=h.count>1&&h.avg?(h.avg*(h.count-1)+gap)/h.count:gap;h.count++;h.ts=now;}else if(!h.ts){h.count++;h.ts=now;}}
+      else D.history.push({id:norm(it.text),text:it.text,cat:it.d.cat||"",count:1,ts:now,avg:0});}}
+  upItem(it);renderList(false);
+}
+function delItem(id){
+  var it=findItem(id);if(!it)return;var copy=itemRow(it);
+  D.items=D.items.filter(function(x){return x.id!==id;});push({op:"delete",table:"items",id:id});refresh();
+  toast("“"+it.text+"” poistettu",function(){var r={id:copy.id,list:copy.list,text:copy.text,done:copy.done,ts:copy.ts,d:pj(copy.data)};D.items.push(r);upItem(r);refresh();});
+}
+function clearDone(l){
+  var gone=itemsOf(l.id).filter(function(i){return i.done==="1";});if(!gone.length)return;
+  var copies=gone.map(itemRow);
+  D.items=D.items.filter(function(i){return !(i.list===l.id&&i.done==="1");});push({op:"clearDone",list:l.id});refresh();
+  toast(gone.length+" riviä poistettu",function(){copies.forEach(function(c){var r={id:c.id,list:c.list,text:c.text,done:c.done,ts:c.ts,d:pj(c.data)};D.items.push(r);upItem(r);});refresh();});
+}
+function choreDone(id){
+  var it=findItem(id);if(!it)return;var prev={last:it.d.last,doneBy:it.d.doneBy,log:(it.d.log||[]).slice()};
+  var now=Date.now();it.d.last=now;it.d.doneBy=me();it.d.log=(it.d.log||[]).concat([{w:me(),t:now}]).slice(-40);
+  if(navigator.vibrate)try{navigator.vibrate(12);}catch(e){}
+  upItem(it);renderList(false);
+  toast(it.text+" merkitty tehdyksi",function(){it.d.last=prev.last;it.d.doneBy=prev.doneBy;it.d.log=prev.log;upItem(it);renderList(false);});
+}
+function reserve(id){
+  var it=findItem(id);if(!it)return;
+  if(it.d.reservedBy===me()){it.d.reservedBy="";toast("Varaus peruttu");}
+  else if(!it.d.reservedBy){it.d.reservedBy=me();toast("Varattu sinulle");}
+  upItem(it);renderList(false);
+}
+function shareList(l){
+  var t=typeOf(l),its=itemsOf(l.id).filter(function(i){return t==="chores"||i.done!=="1";}),lines=[l.name];
+  if(t==="shop"){var order=storeOrder(l);order.forEach(function(c){var g=its.filter(function(i){return (i.d.cat||"muu")===c;});if(!g.length)return;lines.push("");lines.push(CATN[c]+":");g.forEach(function(i){lines.push("- "+i.text+(i.d.qty?" ("+i.d.qty+")":""));});});}
+  else if(t==="pack"){packCatsOf(l).forEach(function(c){var g=its.filter(function(i){return (i.d.cat||"Muut")===c;});if(!g.length)return;lines.push("");lines.push(c+":");g.forEach(function(i){lines.push("- "+i.text);});});}
+  else if(t==="wish"||t==="gift"){its.forEach(function(i){lines.push("- "+i.text+(i.d.price?" ("+i.d.price+")":"")+(i.d.url?" "+i.d.url:""));});}
+  else its.forEach(function(i){lines.push("- "+i.text);});
+  var text=lines.join("\n");
+  if(navigator.share){navigator.share({title:l.name,text:text}).catch(function(){});return;}
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){toast("Lista kopioitu leikepöydälle");},function(){shareFallback(text);});else shareFallback(text);
+}
+function shareFallback(text){openSheet('<h3>Kopioi lista</h3><div class="field"><textarea id="shTxt" style="min-height:220px">'+esc(text)+'</textarea></div><div class="acts"><button class="btn primary" type="button" data-x="c">Valmis</button></div>',function(s){$("#shTxt",s).select();$('[data-x="c"]',s).onclick=closeSheet;});}
+
+/* wake lock for shopping mode */
+var lock=null;
+function wake(on){
+  if(on){if("wakeLock" in navigator&&!lock)navigator.wakeLock.request("screen").then(function(l){lock=l;l.addEventListener("release",function(){lock=null;});}).catch(function(){});}
+  else if(lock){lock.release().catch(function(){});lock=null;}
+}
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"&&VIEW.shopmode)wake(true);});
+
+document.addEventListener("click",function(e){
+  var el=e.target.closest("[data-act]");if(!el||el.disabled)return;
+  var a=el.dataset.act,id=el.dataset.id,l=VIEW.list?listById(VIEW.list):null;
+  switch(a){
+    case "open":go("l-"+id);break;
+    case "back":go("");break;
+    case "settings":go("asetukset");break;
+    case "new-list":newListSheet();break;
+    case "list-menu":listMenu();break;
+    case "toggle":toggle(id);break;
+    case "edit":editSheet(id);break;
+    case "del":delItem(id);break;
+    case "clear-done":clearDone(l);break;
+    case "quick":addText(el.dataset.t);break;
+    case "store":l.d.store=el.dataset.s;upList(l);renderList(false);break;
+    case "shopmode":VIEW.shopmode=!VIEW.shopmode;wake(VIEW.shopmode);renderList(false);if(VIEW.shopmode)toast("Kauppatila: näyttö pysyy päällä, ostetut piiloutuvat");break;
+    case "packwho":VIEW.packWho=el.dataset.w;renderList(false);break;
+    case "chore-done":choreDone(id);break;
+    case "chore-new":choreNewSheet();break;
+    case "reserve":reserve(id);break;
+    case "tpl-menu":tplMenu(id);break;
+    case "install":if(deferredInstall){deferredInstall.prompt();deferredInstall.userChoice.then(function(){deferredInstall=null;refresh();});}break;
+    case "install-hide":lsSet("listat.installHidden","1");refresh();break;
+    case "set-me":lsSet("listat.me",el.dataset.w);renderSettings();break;
+    case "set-me-other":lsSet("listat.me","");render();break;
+    case "theme":lsSet("theme",el.dataset.t);renderSettings();break;
+    case "sync-now":flush();pull().then(function(){if(VIEW.route==="settings")renderSettings();toast("Päivitetty");});break;
+    case "forget-key":lsSet("familyKey","");render();break;
+    case "embed-close":try{parent.postMessage({type:"close-lists"},"*");}catch(err){}break;
+  }
+});
+function tplMenu(id){
+  var l=listById(id);if(!l)return;
+  openSheet('<h3>'+esc(l.name)+'</h3><p class="hint">Oma pakkauspohja, '+itemsOf(l.id).length+' tavaraa. Pohjasta saa uuden listan kohdasta + Uusi lista → Pakkauslista.</p><div class="acts"><button class="btn danger left" type="button" data-x="del">Poista pohja</button><button class="btn" type="button" data-x="c">Sulje</button></div>',function(s){
+    $('[data-x="c"]',s).onclick=closeSheet;
+    confirmBtn($('[data-x="del"]',s),function(){D.lists=D.lists.filter(function(x){return x.id!==id;});D.items=D.items.filter(function(x){return x.list!==id;});push({op:"delete",table:"lists",id:id});closeSheet();refresh();});
+  });
+}
+
+/* =========================================================
+   Install support, start-up
+   ========================================================= */
+var deferredInstall=null;
+window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();deferredInstall=e;if(VIEW.route==="home")renderHome(false);});
+function isStandalone(){return (window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;}
+if("serviceWorker" in navigator&&location.protocol==="https:"){navigator.serviceWorker.register("listat-sw.js").catch(function(){});}
+
+loadQ();loadCache();render();
+if(configured()&&key()){flush();pull();}
+})();
+</script>
+</body>
+</html>

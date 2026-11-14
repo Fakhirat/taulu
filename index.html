@@ -745,6 +745,7 @@ var KM_WHY=["Nopea aamu!","Reipas ilta!","Autoit muita","Olit rohkea","Siivosit 
 function kmCfg(){var x=kmItems().filter(function(y){return y.d.kind==="cfg";})[0];return x||{row:{id:"km-cfg",list:KM_LIST,text:"Asetukset",done:"",ts:Date.now(),data:"{}"},d:{kind:"cfg"}};}
 function kmStars(c){return kmItems().filter(function(x){return x.d.kind==="star"&&(!c||x.d.who===c);});}
 function kmBal(c){return Math.max(0,kmStars(c).reduce(function(a,x){return a+(+x.d.n||0);},0));}
+function kmAlbum(c){return kmItems().filter(function(x){return x.d.kind==="album"&&x.d.who===c;})[0];}
 function kmStarHtml(kidsAll){
   var c=kmCfg().d,on=!!c.games,max=c.max==null?3:+c.max;
   var h='<span class="flabel">Tähtipelit</span><div class="chips"><button type="button" class="chip none" data-sg="0" aria-pressed="'+!on+'">Pois</button><button type="button" class="chip none" data-sg="1" aria-pressed="'+on+'">Päällä</button></div>'+
@@ -757,7 +758,10 @@ function kmStarHtml(kidsAll){
   if(!kidsAll.length)return h+'<p class="hint">Merkitse asetuksissa perheenjäsen lapseksi, niin voit antaa hänelle tähtiä.</p>';
   h+='<span class="flabel">Anna tähtiä</span><input id="sgWhy" maxlength="40" placeholder="Syy, jonka lapsi kuulee (vapaaehtoinen)"><div class="kmsug">'+KM_WHY.map(function(w){return '<button type="button" data-why="'+esc(w)+'">'+esc(w)+'</button>';}).join("")+'</div>';
   h+=kidsAll.map(function(n){return '<div class="kmrow"><span class="kn" style="background:'+colorOf(n)+';padding:4px 12px;border-radius:999px;font-weight:700;color:var(--note-ink)">'+esc(n)+'</span><span class="grow" style="font-size:20px;font-weight:700">⭐ '+kmBal(n)+'</span>'+
-    '<button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="-1" aria-label="Vähennä tähti">−1</button><button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="1">+1 ⭐</button><button class="btn sm primary" type="button" data-give="'+esc(n)+'" data-n="2">+2 ⭐</button></div>';}).join("");
+    '<button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="-1" aria-label="Vähennä tähti">−1</button><button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="1">+1 ⭐</button><button class="btn sm primary" type="button" data-give="'+esc(n)+'" data-n="2">+2 ⭐</button></div>'+
+    (function(){var al=kmAlbum(n);if(!al)return "";var cnt=Object.keys(al.d.s||{}).length,pl=(al.d.place||[]).length;
+      return '<div class="kmrow" style="border:none;padding-top:0"><span class="hint" style="flex:1">📒 Tarrakirja: '+cnt+' / 28 tarraa, '+pl+' liimattu</span>'+
+        (pl?'<button class="btn sm" type="button" data-alclear="'+esc(n)+'">Tyhjennä sivut</button>':"")+'<button class="btn sm danger" style="margin-right:0" type="button" data-alreset="'+esc(n)+'">Nollaa tarrakirja</button></div>';})();}).join("");
   var hist=kmStars().filter(function(x){return x.row.id.indexOf("sb-")!==0;}).sort(function(a,b){return (+b.row.ts||0)-(+a.row.ts||0);}).slice(0,8);
   if(hist.length){h+='<span class="flabel">Viimeisimmät</span>'+hist.map(function(x){var d=x.d,dt=pd(d.date||ymd(new Date()));
     return '<div class="kall"><span class="hint" style="width:48px">'+dt.getDate()+'.'+(dt.getMonth()+1)+'.</span><span class="kn" style="background:'+colorOf(d.who)+'">'+esc(d.who)+'</span>'+
@@ -775,6 +779,8 @@ function kmStarBind(s,kidsAll,redraw){
     var n=+b.dataset.n,w=b.dataset.give;if(n<0&&kmBal(w)<1){toast("Ei vähennettävää");return;}
     var d={kind:"star",who:w,n:n,date:ymd(new Date()),by:"parent",why:n>0?(why&&why.value.trim()):"Aikuinen vähensi",seen:n<0};
     kmSave({row:{id:newId(),list:KM_LIST,text:"Tähti",done:"",ts:Date.now(),data:"{}"},d:d});toast(n>0?w+": +"+n+" ⭐":w+": −1 ⭐");redraw();};});
+  s.querySelectorAll("[data-alclear]").forEach(function(b){confirmBtn(b,function(){var al=kmAlbum(b.dataset.alclear);if(!al)return;al.d.place=[];kmSave(al);toast("Tarrat irrotettu sivuilta");redraw();});});
+  s.querySelectorAll("[data-alreset]").forEach(function(b){confirmBtn(b,function(){var al=kmAlbum(b.dataset.alreset);if(al)kmDel(al.row.id);toast("Tarrakirja nollattu");redraw();});});
   s.querySelectorAll("[data-sdel]").forEach(function(b){confirmBtn(b,function(){kmDel(b.dataset.sdel);redraw();});});
 }
 function kidModeSheet(tab){

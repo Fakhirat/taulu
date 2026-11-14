@@ -63,6 +63,10 @@ var css='.sg{position:fixed;inset:0;z-index:50;background:linear-gradient(180deg
   '.sg-scene{position:relative;width:100%;flex:1;min-height:200px;border-radius:26px;overflow:hidden;box-shadow:0 7px 0 rgba(43,42,76,.12);touch-action:none}'+
   '.sg-bg{position:absolute;inset:0;width:100%;height:100%}'+
   '.sg-pl{position:absolute;transform:translate(-50%,-50%);font-size:clamp(40px,6vw,64px);line-height:1;cursor:grab;touch-action:none;filter:drop-shadow(0 3px 0 rgba(255,255,255,.9)) drop-shadow(0 4px 4px rgba(0,0,0,.18))}'+
+  '.sg-pages{display:flex;gap:8px;width:100%;overflow-x:auto;scrollbar-width:none;flex:none}'+
+  '.sg-pg{flex:none;border:none;border-radius:999px;background:rgba(255,255,255,.6);font-family:inherit;font-size:18px;font-weight:700;color:#2b2a4c;padding:8px 16px;min-height:44px;position:relative}'+
+  '.sg-pg[aria-pressed="true"]{background:#fff;box-shadow:0 4px 0 rgba(43,42,76,.12)}'+
+  '.sg-pg i{font-style:normal;font-size:12px;background:#ffd84d;border-radius:999px;padding:0 6px;margin-left:6px;vertical-align:2px}'+
   '.sg-tray{display:flex;gap:8px;overflow-x:auto;width:100%;padding:6px 4px;min-height:76px;align-items:center;scrollbar-width:none}'+
   '.sg-tr{position:relative;flex:none;width:66px;height:66px;border-radius:18px;background:#fff;display:grid;place-items:center;font-size:40px;box-shadow:0 4px 0 rgba(43,42,76,.1);touch-action:none;cursor:grab}'+
   '.sg-tr.used{opacity:.35}.sg-tr.new{animation:sgpulse .9s ease infinite;border:3px solid #ffd84d}'+
@@ -196,8 +200,10 @@ function reward(){
 function nameOf(e){var x=STICKERS.filter(function(s){return s[0]===e;})[0];return x?x[1]:"";}
 
 /* ---------- sticker book: a landscape where stickers are dragged and left where the child wants ---------- */
-var SCENE='<svg class="sg-bg" viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid slice" aria-hidden="true">'+
-  '<defs><linearGradient id="sgSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fd3ff"/><stop offset="1" stop-color="#e4f6ff"/></linearGradient>'+
+/* sticker book pages; the art stays inside the band that is visible on a wide landscape screen */
+function svgWrap(inner){return '<svg class="sg-bg" viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid slice" aria-hidden="true">'+inner+'</svg>';}
+var PAGES=[
+ {n:"Niitty",e:"🌳",svg:svgWrap('<defs><linearGradient id="sgSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fd3ff"/><stop offset="1" stop-color="#e4f6ff"/></linearGradient>'+
   '<linearGradient id="sgSea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6cc4f0"/><stop offset="1" stop-color="#3a9fd8"/></linearGradient></defs>'+
   '<rect width="1000" height="560" fill="url(#sgSky)"/><circle cx="860" cy="160" r="46" fill="#ffd84d"/><circle cx="860" cy="160" r="62" fill="#ffd84d" opacity=".25"/>'+
   '<g fill="#fff" opacity=".9"><ellipse cx="180" cy="170" rx="70" ry="24"/><ellipse cx="230" cy="154" rx="46" ry="24"/><ellipse cx="560" cy="140" rx="60" ry="20"/><ellipse cx="600" cy="128" rx="36" ry="20"/></g>'+
@@ -206,19 +212,42 @@ var SCENE='<svg class="sg-bg" viewBox="0 0 1000 560" preserveAspectRatio="xMidYM
   '<path d="M0 420 Q140 380 300 410 Q420 440 380 560 H0Z" fill="url(#sgSea)"/>'+
   '<path d="M560 560 Q600 450 700 400 T1000 360 V400 Q820 420 760 470 T700 560Z" fill="#e8d4a8"/>'+
   '<g><rect x="842" y="262" width="12" height="44" fill="#9a6a3f"/><circle cx="848" cy="250" r="34" fill="#4fae5a"/><rect x="452" y="296" width="10" height="38" fill="#9a6a3f"/><circle cx="457" cy="284" r="28" fill="#5cbb63"/></g>'+
-  '<g fill="#ff8fb1"><circle cx="480" cy="470" r="6"/><circle cx="520" cy="500" r="6"/><circle cx="900" cy="500" r="6"/></g><g fill="#fff3a3"><circle cx="440" cy="510" r="6"/><circle cx="960" cy="470" r="6"/></g>'+
-  '</svg>';
+  '<g fill="#ff8fb1"><circle cx="480" cy="470" r="6"/><circle cx="520" cy="500" r="6"/><circle cx="900" cy="500" r="6"/></g><g fill="#fff3a3"><circle cx="440" cy="510" r="6"/><circle cx="960" cy="470" r="6"/></g>')},
+ {n:"Meri",e:"🌊",svg:svgWrap('<defs><linearGradient id="sgW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4fc0ea"/><stop offset="1" stop-color="#1d6fb0"/></linearGradient></defs>'+
+   '<rect width="1000" height="560" fill="#bfeaff"/><circle cx="850" cy="150" r="40" fill="#ffd84d"/>'+
+   '<path d="M0 200 Q60 185 120 200 T240 200 T360 200 T480 200 T600 200 T720 200 T840 200 T960 200 T1080 200 V560 H0Z" fill="url(#sgW)"/>'+
+   '<path d="M0 410 Q250 370 520 405 T1000 390 V560 H0Z" fill="#f1d9a0"/>'+
+   '<g fill="none" stroke="#3fae6a" stroke-width="10" stroke-linecap="round"><path d="M120 405 q-20 -40 0 -80 q20 -40 0 -80"/><path d="M150 405 q20 -30 0 -60"/><path d="M820 395 q-20 -50 0 -100 q20 -40 0 -70"/></g>'+
+   '<g fill="#ff8fb1"><circle cx="420" cy="420" r="10"/><circle cx="700" cy="412" r="8"/></g><path d="M560 425 l14 -26 l14 26z" fill="#ffab5e"/>'+
+   '<g fill="#fff" opacity=".55"><circle cx="300" cy="300" r="7"/><circle cx="312" cy="270" r="5"/><circle cx="305" cy="245" r="3"/><circle cx="680" cy="330" r="6"/><circle cx="690" cy="300" r="4"/></g>')},
+ {n:"Avaruus",e:"🚀",svg:svgWrap('<defs><radialGradient id="sgSp" cx=".5" cy=".4" r=".8"><stop offset="0" stop-color="#3b2f7a"/><stop offset="1" stop-color="#120d33"/></radialGradient></defs>'+
+   '<rect width="1000" height="560" fill="url(#sgSp)"/>'+
+   '<g fill="#fff">'+[[80,140],[160,260],[240,170],[330,380],[420,150],[520,300],[600,190],[700,400],[760,140],[880,330],[940,200],[60,400],[300,250],[640,320],[960,420],[200,430],[470,420]].map(function(p,i){return '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(i%3+1.5)+'" opacity="'+(.5+i%2*.4)+'"/>';}).join("")+'</g>'+
+   '<circle cx="820" cy="190" r="58" fill="#f6f1c7"/><circle cx="845" cy="175" r="58" fill="url(#sgSp)"/>'+
+   '<circle cx="230" cy="330" r="60" fill="#ff9f6e"/><ellipse cx="230" cy="330" rx="105" ry="22" fill="none" stroke="#ffd84d" stroke-width="9" transform="rotate(-18 230 330)"/>'+
+   '<path d="M0 470 Q300 430 600 460 T1000 450 V560 H0Z" fill="#8a84b8"/><g fill="#6d679c"><ellipse cx="200" cy="490" rx="40" ry="10"/><ellipse cx="640" cy="485" rx="30" ry="8"/><ellipse cx="860" cy="500" rx="46" ry="11"/></g>')},
+ {n:"Talvi",e:"❄️",svg:svgWrap('<defs><linearGradient id="sgWs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b8d8f5"/><stop offset="1" stop-color="#eef6ff"/></linearGradient></defs>'+
+   '<rect width="1000" height="560" fill="url(#sgWs)"/>'+
+   '<path d="M0 310 Q200 230 420 300 T1000 280 V560 H0Z" fill="#f4f9ff"/><path d="M0 380 Q300 330 600 370 T1000 350 V560 H0Z" fill="#fff"/>'+
+   '<g fill="#2f7a55">'+[[130,300],[190,310],[760,290],[820,300],[900,280]].map(function(p){return '<path d="M'+p[0]+' '+(p[1]-90)+' l-36 90 h72z"/><path d="M'+p[0]+' '+(p[1]-120)+' l-26 60 h52z"/>';}).join("")+'</g>'+
+   '<g fill="#fff"><circle cx="560" cy="420" r="40"/><circle cx="560" cy="358" r="28"/></g><g fill="#2b2a4c"><circle cx="551" cy="352" r="3"/><circle cx="569" cy="352" r="3"/></g><path d="M560 360 l18 5 l-18 3z" fill="#ffab5e"/>'+
+   '<g fill="#fff">'+[[90,160],[300,140],[420,200],[650,150],[880,180],[960,240],[240,230],[720,230]].map(function(p){return '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="5"/>';}).join("")+'</g>')}
+];
 function book(highlight){
   var have=A.album(),place=(A.albumPlace?A.albumPlace():[]).filter(function(p){return have[p.e];});
-  var b=shell("Tarrakirja 📒",'<div class="sg-scene" id="sgScene">'+SCENE+'</div><div class="sg-tray" id="sgTray"></div>'+
+  var pk="sg.page."+A.child,page=0;try{page=+localStorage.getItem(pk)||0;}catch(e){}if(!(page>=0&&page<PAGES.length))page=0;
+  var b=shell("Tarrakirja 📒",'<div class="sg-pages" id="sgPages"></div><div class="sg-scene" id="sgScene"></div><div class="sg-tray" id="sgTray"></div>'+
     '<div class="sg-row"><button class="sg-big alt" type="button" id="sgAll">📋 Kokoelma '+Object.keys(have).length+' / '+STICKERS.length+'</button><button class="sg-big alt" type="button" id="sgBack">⬅ Takaisin</button></div>');
   b.classList.add("sg-bookbody");
   var scene=b.querySelector("#sgScene"),tray=b.querySelector("#sgTray"),saveT=0;
   function left(e){return (have[e]||0)-place.filter(function(p){return p.e===e;}).length;}
   function save(){clearTimeout(saveT);saveT=setTimeout(function(){if(A.placeSave)A.placeSave(place);},700);}
   function draw(){
-    scene.querySelectorAll(".sg-pl").forEach(function(x){x.remove();});
-    place.forEach(function(p,i){var el=document.createElement("span");el.className="sg-pl";el.textContent=p.e;el.style.left=p.x+"%";el.style.top=p.y+"%";el.dataset.i=i;scene.appendChild(el);drag(el,p.e,i);});
+    scene.innerHTML=PAGES[page].svg;
+    b.querySelector("#sgPages").innerHTML=PAGES.map(function(pg,i){var n=place.filter(function(p){return (p.p||0)===i;}).length;
+      return '<button type="button" class="sg-pg" data-pg="'+i+'" aria-pressed="'+(i===page)+'">'+pg.e+' '+pg.n+(n?'<i>'+n+'</i>':"")+'</button>';}).join("");
+    b.querySelectorAll("[data-pg]").forEach(function(x){x.onclick=function(){page=+x.dataset.pg;try{localStorage.setItem(pk,String(page));}catch(e){}A.tone(660,0,.1);A.say(PAGES[page].n);draw();};});
+    place.forEach(function(p,i){if((p.p||0)!==page)return;var el=document.createElement("span");el.className="sg-pl";el.textContent=p.e;el.style.left=p.x+"%";el.style.top=p.y+"%";el.dataset.i=i;scene.appendChild(el);drag(el,p.e,i);});
     var keys=STICKERS.map(function(s){return s[0];}).filter(function(e){return have[e];});
     tray.innerHTML=keys.length?keys.map(function(e){var n=left(e);return '<span class="sg-tr'+(n?"":" used")+(e===highlight&&n?" new":"")+'" data-e="'+e+'">'+e+(n>1?'<i>'+n+'</i>':"")+'</span>';}).join(""):'<span class="sg-msg">Tarrat saat peleistä.</span>';
     tray.querySelectorAll(".sg-tr").forEach(function(el){if(left(el.dataset.e))drag(el,el.dataset.e,-1);else el.onclick=function(){A.say(nameOf(el.dataset.e)+" on jo kirjassa.");};});
@@ -237,7 +266,7 @@ function book(highlight){
         if(!moved){A.sOn();A.say(nameOf(e));el.classList.remove("wig");void el.offsetWidth;el.classList.add("wig");return;}
         ghost.remove();var r=scene.getBoundingClientRect(),inside=u.clientX>r.left&&u.clientX<r.right&&u.clientY>r.top&&u.clientY<r.bottom;
         var x=Math.round((u.clientX-r.left)/r.width*1000)/10,y=Math.round((u.clientY-r.top)/r.height*1000)/10;
-        if(inside){x=Math.max(4,Math.min(96,x));y=Math.max(6,Math.min(94,y));if(idx>=0){place[idx].x=x;place[idx].y=y;}else place.push({e:e,x:x,y:y});A.tone(880,0,.12);A.tone(1180,.08,.15);}
+        if(inside){x=Math.max(4,Math.min(96,x));y=Math.max(6,Math.min(94,y));if(idx>=0){place[idx].x=x;place[idx].y=y;}else place.push({e:e,x:x,y:y,p:page});A.tone(880,0,.12);A.tone(1180,.08,.15);}
         else if(idx>=0){place.splice(idx,1);A.sOff();}
         save();draw();
       }

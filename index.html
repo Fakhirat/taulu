@@ -752,6 +752,8 @@ function kmStarHtml(kidsAll){
       "Pois päältä lapsi-tila toimii kuten ennenkin: tähtiä kertyy rutiineista, mutta pelejä ei näy. Päälle kytkettynä lapsi voi käyttää tähtiä minipeleihin ja kerätä tarroja.")+'</p>';
   if(!on)return h;
   h+='<div class="kmrow" style="border:none"><span class="hint" style="flex:1">Pelikertoja päivässä enintään</span><select id="sgMax" style="width:auto">'+[1,2,3,5,0].map(function(n){return '<option value="'+n+'"'+(n===max?" selected":"")+'>'+(n?n:"ei rajaa")+'</option>';}).join("")+'</select></div>';
+  var tl=c.tricks==null?2:+c.tricks;
+  h+='<div class="kmrow" style="border:none"><span class="hint" style="flex:1">Tee temppu -pelin temput</span><select id="sgTricks" style="width:auto">'+[[1,"Helpot"],[2,"Sekoitus (helppo, keskitaso, haaste)"],[3,"Haastavat"]].map(function(o){return '<option value="'+o[0]+'"'+(o[0]===tl?" selected":"")+'>'+o[1]+'</option>';}).join("")+'</select></div>';
   if(!kidsAll.length)return h+'<p class="hint">Merkitse asetuksissa perheenjäsen lapseksi, niin voit antaa hänelle tähtiä.</p>';
   h+='<span class="flabel">Anna tähtiä</span><input id="sgWhy" maxlength="40" placeholder="Syy, jonka lapsi kuulee (vapaaehtoinen)"><div class="kmsug">'+KM_WHY.map(function(w){return '<button type="button" data-why="'+esc(w)+'">'+esc(w)+'</button>';}).join("")+'</div>';
   h+=kidsAll.map(function(n){return '<div class="kmrow"><span class="kn" style="background:'+colorOf(n)+';padding:4px 12px;border-radius:999px;font-weight:700;color:var(--note-ink)">'+esc(n)+'</span><span class="grow" style="font-size:20px;font-weight:700">⭐ '+kmBal(n)+'</span>'+
@@ -766,6 +768,7 @@ function kmStarHtml(kidsAll){
 function kmStarBind(s,kidsAll,redraw){
   s.querySelectorAll("[data-sg]").forEach(function(b){b.onclick=function(){var c=kmCfg();c.d.games=b.dataset.sg==="1";kmSave(c);redraw();};});
   var mx=s.querySelector("#sgMax");if(mx)mx.onchange=function(){var c=kmCfg();c.d.max=+mx.value;kmSave(c);};
+  var tk=s.querySelector("#sgTricks");if(tk)tk.onchange=function(){var c=kmCfg();c.d.tricks=+tk.value;kmSave(c);};
   var why=s.querySelector("#sgWhy");
   s.querySelectorAll("[data-why]").forEach(function(b){b.onclick=function(){why.value=b.dataset.why;};});
   s.querySelectorAll("[data-give]").forEach(function(b){b.onclick=function(){

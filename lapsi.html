@@ -383,6 +383,9 @@ function bumpPill(){$("#starN").textContent=stars();var s=$("#stars");s.classLis
 function gameApi(){var c=child();return {child:c,say:say,sOn:sOn,sOff:sOff,sFanfare:sFanfare,tone:tone,
   balance:function(){return balance(c);},plays:function(){return playsToday(c);},max:function(){var m=cfg().max;return m==null?3:+m;},
   spend:function(g){if(balance(c)<1)return false;save({id:newId(),list:KM_LIST,text:"Peli",done:"",ts:Date.now(),data:JSON.stringify({kind:"star",who:c,n:-1,date:ymd(new Date()),game:g,seen:true})});return true;},
+  trickLevel:function(){var t=cfg().tricks;return t==null?2:+t;},
+  albumPlace:function(){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];return x&&Array.isArray(x.d.place)?x.d.place:[];},
+  placeSave:function(list){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];if(!x)return;x.d.place=list.slice(0,200);x.row.data=JSON.stringify(x.d);save(x.row);},
   album:function(){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];return x&&x.d.s||{};},
   addSticker:function(e){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];
     var row=x?x.row:{id:"alb-"+newId(),list:KM_LIST,text:"Tarrat",done:"",ts:Date.now(),data:"{}"},d=x?x.d:{kind:"album",who:c,s:{}};

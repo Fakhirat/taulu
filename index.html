@@ -346,6 +346,16 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .kmrow .dt{width:150px;flex:none}
 .kmrow .mv{width:34px;height:34px;flex:none;border:1px solid var(--line);border-radius:8px;background:none;color:var(--ink)}
 .kmrow .mv:disabled{opacity:.3}
+.night{position:fixed;inset:0;z-index:300;background:#000;cursor:none;touch-action:none;-webkit-user-select:none;user-select:none}
+.night .nbox{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;transition:transform 2s ease;white-space:nowrap}
+.night .nclock{font-size:min(22vw,40vh);font-weight:300;line-height:1;color:rgba(255,168,110,.34);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.night .nday{margin-top:1.5vh;font-size:min(3.2vw,5vh);color:rgba(255,168,110,.26)}
+.night .nnext{margin-top:1vh;font-size:min(2.6vw,4.2vh);color:rgba(255,168,110,.22);line-height:1.45}
+.night.black .nbox{display:none}
+.kmwho{flex:none;max-width:120px;height:34px;padding:0 10px;border-radius:999px;border:1px solid var(--line);background:var(--today);color:var(--ink);font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kmwho.all{background:none;color:var(--muted);font-weight:400}
+.kmwhos{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 8px 58px}
+.kmwhos .chip{min-height:34px;padding:4px 12px}
 .kmsug{display:flex;flex-wrap:wrap;gap:6px}
 .kmsug button{border:1px dashed var(--line);border-radius:999px;background:none;color:var(--ink);padding:6px 12px;min-height:36px;font-size:14px}
 .btn.danger{color:var(--danger);border-color:var(--danger);margin-right:auto}
@@ -440,6 +450,7 @@ body.has-bg .foot .lbl{background:var(--panel-a);padding:4px 8px;border-radius:6
 
 <div class="overlay" id="overlay" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" hidden></div>
+<div class="night" id="night" hidden><div class="nbox" id="nbox"><div class="nclock" id="nclock"></div><div class="nday" id="nday"></div><div class="nnext" id="nnext"></div></div></div>
 
 <script>
 (function(){
@@ -477,7 +488,7 @@ function applyTheme(){
 /* ---------- clock ---------- */
 var lastDay="",lastMin=-1;
 function tick(){
-  var d=new Date();
+  var d=new Date();if(d.getSeconds()%5===0)nightCheck();
   $("#clock").innerHTML=pad(d.getHours())+":"+pad(d.getMinutes())+"<small>"+pad(d.getSeconds())+"</small>";
   var k=ymd(d);
   if(k!==lastDay){lastDay=k;
@@ -717,6 +728,9 @@ var KM_SUGG={aamu:[["💧","Kasvojen pesu"],["💇","Hiukset"],["🛏️","Petaa
 var KM_CNT_EM=["🎂","🎄","🎁","✈️","🏖️","👵","👴","🎃","🐰","🎉","🏕️","⛷️"];
 function kmItems(){return (S.items||[]).filter(function(i){return i.list===KM_LIST;}).map(function(i){return {row:i,d:pjson(i.data)};});}
 function kmSteps(r){return kmItems().filter(function(x){return x.d.kind==="step"&&x.d.routine===r;}).sort(function(a,b){return (a.d.order||0)-(b.d.order||0);});}
+/* who: list of children the step is for; missing or empty means everyone */
+function kmFor(x,kid){var w=x.d.who;return !kid||!w||!w.length||w.indexOf(kid)>=0;}
+function kmWhoTxt(x){var w=x.d.who;return w&&w.length?w.join(", "):"Kaikille";}
 function kmEnsureList(){if(!(S.lists||[]).some(function(l){return l.id===KM_LIST;})){var l={id:KM_LIST,name:"Lapsi-tila",ts:Date.now(),type:"kmode",data:"{}"};S.lists.push(l);sendQ({op:"upsert",table:"lists",row:l});}}
 function kmSave(it){it.row.data=JSON.stringify(it.d);kmEnsureList();if(S.items.indexOf(it.row)<0)S.items.push(it.row);sendQ({op:"upsert",table:"items",row:it.row});}
 function kmDel(id){S.items=S.items.filter(function(i){return i.id!==id;});sendQ({op:"delete",table:"items",id:id});}
@@ -726,21 +740,65 @@ function kmDefaults(){
   ["aamu","ilta"].forEach(function(r){KM_DEF[r].forEach(function(s,i){
     kmSave({row:{id:"km-"+r+"-"+(i+1),list:KM_LIST,text:s[1],done:"",ts:Date.now()+i,data:"{}"},d:{kind:"step",routine:r,emoji:s[0],order:i+1}});});});
 }
+/* ---------- star games (tahtipelit.js on the kid page): switch, stars per child, history ---------- */
+var KM_WHY=["Nopea aamu!","Reipas ilta!","Autoit muita","Olit rohkea","Siivosit lelut","Söit hyvin"];
+function kmCfg(){var x=kmItems().filter(function(y){return y.d.kind==="cfg";})[0];return x||{row:{id:"km-cfg",list:KM_LIST,text:"Asetukset",done:"",ts:Date.now(),data:"{}"},d:{kind:"cfg"}};}
+function kmStars(c){return kmItems().filter(function(x){return x.d.kind==="star"&&(!c||x.d.who===c);});}
+function kmBal(c){return Math.max(0,kmStars(c).reduce(function(a,x){return a+(+x.d.n||0);},0));}
+function kmStarHtml(kidsAll){
+  var c=kmCfg().d,on=!!c.games,max=c.max==null?3:+c.max;
+  var h='<span class="flabel">Tähtipelit</span><div class="chips"><button type="button" class="chip none" data-sg="0" aria-pressed="'+!on+'">Pois</button><button type="button" class="chip none" data-sg="1" aria-pressed="'+on+'">Päällä</button></div>'+
+    '<p class="hint">'+(on?"Lapsi saa tähden aamu- ja iltarutiinista ja voi käyttää tähden minipeliin (Tee temppu tai Laskut). Pelin lopuksi hän saa tarran albumiinsa. Tähdet ovat lapsikohtaisia ja näkyvät kaikilla laitteilla.":
+      "Pois päältä lapsi-tila toimii kuten ennenkin: tähtiä kertyy rutiineista, mutta pelejä ei näy. Päälle kytkettynä lapsi voi käyttää tähtiä minipeleihin ja kerätä tarroja.")+'</p>';
+  if(!on)return h;
+  h+='<div class="kmrow" style="border:none"><span class="hint" style="flex:1">Pelikertoja päivässä enintään</span><select id="sgMax" style="width:auto">'+[1,2,3,5,0].map(function(n){return '<option value="'+n+'"'+(n===max?" selected":"")+'>'+(n?n:"ei rajaa")+'</option>';}).join("")+'</select></div>';
+  if(!kidsAll.length)return h+'<p class="hint">Merkitse asetuksissa perheenjäsen lapseksi, niin voit antaa hänelle tähtiä.</p>';
+  h+='<span class="flabel">Anna tähtiä</span><input id="sgWhy" maxlength="40" placeholder="Syy, jonka lapsi kuulee (vapaaehtoinen)"><div class="kmsug">'+KM_WHY.map(function(w){return '<button type="button" data-why="'+esc(w)+'">'+esc(w)+'</button>';}).join("")+'</div>';
+  h+=kidsAll.map(function(n){return '<div class="kmrow"><span class="kn" style="background:'+colorOf(n)+';padding:4px 12px;border-radius:999px;font-weight:700;color:var(--note-ink)">'+esc(n)+'</span><span class="grow" style="font-size:20px;font-weight:700">⭐ '+kmBal(n)+'</span>'+
+    '<button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="-1" aria-label="Vähennä tähti">−1</button><button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="1">+1 ⭐</button><button class="btn sm primary" type="button" data-give="'+esc(n)+'" data-n="2">+2 ⭐</button></div>';}).join("");
+  var hist=kmStars().filter(function(x){return x.row.id.indexOf("sb-")!==0;}).sort(function(a,b){return (+b.row.ts||0)-(+a.row.ts||0);}).slice(0,8);
+  if(hist.length){h+='<span class="flabel">Viimeisimmät</span>'+hist.map(function(x){var d=x.d,dt=pd(d.date||ymd(new Date()));
+    return '<div class="kall"><span class="hint" style="width:48px">'+dt.getDate()+'.'+(dt.getMonth()+1)+'.</span><span class="kn" style="background:'+colorOf(d.who)+'">'+esc(d.who)+'</span>'+
+      '<span class="grow">'+(d.n>0?"+":"−")+Math.abs(d.n)+' ⭐ '+esc(d.game?(d.game==="math"?"Laskupeli":"Tee temppu"):d.why||"")+(d.by==="parent"&&d.n>0&&!d.seen?' <span class="hint">· näytetään lapselle</span>':"")+'</span>'+
+      '<button class="ked" type="button" data-sdel="'+esc(x.row.id)+'" aria-label="Poista">🗑</button></div>';}).join("");}
+  return h;
+}
+function kmStarBind(s,kidsAll,redraw){
+  s.querySelectorAll("[data-sg]").forEach(function(b){b.onclick=function(){var c=kmCfg();c.d.games=b.dataset.sg==="1";kmSave(c);redraw();};});
+  var mx=s.querySelector("#sgMax");if(mx)mx.onchange=function(){var c=kmCfg();c.d.max=+mx.value;kmSave(c);};
+  var why=s.querySelector("#sgWhy");
+  s.querySelectorAll("[data-why]").forEach(function(b){b.onclick=function(){why.value=b.dataset.why;};});
+  s.querySelectorAll("[data-give]").forEach(function(b){b.onclick=function(){
+    var n=+b.dataset.n,w=b.dataset.give;if(n<0&&kmBal(w)<1){toast("Ei vähennettävää");return;}
+    var d={kind:"star",who:w,n:n,date:ymd(new Date()),by:"parent",why:n>0?(why&&why.value.trim()):"Aikuinen vähensi",seen:n<0};
+    kmSave({row:{id:newId(),list:KM_LIST,text:"Tähti",done:"",ts:Date.now(),data:"{}"},d:d});toast(n>0?w+": +"+n+" ⭐":w+": −1 ⭐");redraw();};});
+  s.querySelectorAll("[data-sdel]").forEach(function(b){confirmBtn(b,function(){kmDel(b.dataset.sdel);redraw();});});
+}
 function kidModeSheet(tab){
   tab=tab||"aamu";kmDefaults();
+  var kidsAll=kidNames(),kid=kidsAll.indexOf(lsGet("kmKid",""))>=0?lsGet("kmKid",""):(kidsAll.length>1?kidsAll[0]:""),openWho="";
+  if(kidsAll.length<2)kid="";
   openSheet("",function(s){
     s.classList.add("wide");
     function draw(){
       var html='<h3>🧸 Lapsi-tilan sisältö</h3><p class="hint">Näkyy lapsen omalla sivulla (taulun alareunan 🧸-nappi). Päivän ohjelmaan tulevat taulun tapahtumat, joissa on lapsen nimi tai ei nimeä, ja mukaan-lista tulee Lapsille mukaan -osiosta.</p>'+
-        '<div class="seg" role="group" aria-label="Osio">'+[["aamu","☀️ Aamurutiini"],["ilta","🌙 Iltarutiini"],["count","⏳ Laskurit"]].map(function(x){return '<button type="button" data-tab="'+x[0]+'" aria-pressed="'+(tab===x[0])+'">'+x[1]+'</button>';}).join("")+'</div><div class="list">';
-      if(tab!=="count"){
-        var st=kmSteps(tab);
-        html+=st.map(function(x,i){return '<div class="kmrow" data-id="'+esc(x.row.id)+'"><input class="em" maxlength="4" value="'+esc(x.d.emoji||"")+'" aria-label="Kuva (emoji)"><input class="tx" maxlength="30" value="'+esc(x.row.text)+'" aria-label="Nimi">'+
-          '<button class="mv" type="button" data-mv="-1"'+(i===0?" disabled":"")+' aria-label="Ylös">↑</button><button class="mv" type="button" data-mv="1"'+(i===st.length-1?" disabled":"")+' aria-label="Alas">↓</button><button class="mv" type="button" data-del aria-label="Poista">🗑</button></div>';}).join("")||'<p class="hint">Ei vaiheita. Lisää alta.</p>';
+        '<div class="seg" role="group" aria-label="Osio">'+[["aamu","☀️ Aamurutiini"],["ilta","🌙 Iltarutiini"],["count","⏳ Laskurit"],["star","⭐ Tähdet"]].map(function(x){return '<button type="button" data-tab="'+x[0]+'" aria-pressed="'+(tab===x[0])+'">'+x[1]+'</button>';}).join("")+'</div><div class="list">';
+      if(tab==="star"){html+=kmStarHtml(kidsAll);}
+      else if(tab!=="count"){
+        var st=kmSteps(tab).filter(function(x){return kmFor(x,kid);});
+        if(kidsAll.length>1)html+='<div class="field"><span class="flabel">Kenen rutiini</span><div class="chips" id="kmKids">'+kidsAll.concat([""]).map(function(n){
+          return '<button type="button" class="chip'+(n?"":" none")+'" data-kid="'+esc(n)+'"'+(n?' style="background:'+colorOf(n)+'"':"")+' aria-pressed="'+(kid===n)+'">'+(n?esc(n):"Kaikki vaiheet")+'</button>';}).join("")+'</div></div>';
+        html+=st.map(function(x,i){var shared=!x.d.who||!x.d.who.length;
+          return '<div class="kmrow" data-id="'+esc(x.row.id)+'"><input class="em" maxlength="4" value="'+esc(x.d.emoji||"")+'" aria-label="Kuva (emoji)"><input class="tx" maxlength="30" value="'+esc(x.row.text)+'" aria-label="Nimi">'+
+          (kidsAll.length>1?'<button class="kmwho'+(shared?" all":"")+'" type="button" data-who aria-expanded="'+(openWho===x.row.id)+'" title="Kenelle">'+esc(kmWhoTxt(x))+'</button>':"")+
+          '<button class="mv" type="button" data-mv="-1"'+(i===0?" disabled":"")+' aria-label="Ylös">↑</button><button class="mv" type="button" data-mv="1"'+(i===st.length-1?" disabled":"")+' aria-label="Alas">↓</button><button class="mv" type="button" data-del aria-label="'+(kid?"Poista lapselta "+esc(kid):"Poista")+'">🗑</button></div>'+
+          (openWho===x.row.id?'<div class="kmwhos" data-for="'+esc(x.row.id)+'"><button type="button" class="chip none" data-w="" aria-pressed="'+shared+'">Kaikille</button>'+kidsAll.map(function(n){
+            return '<button type="button" class="chip" data-w="'+esc(n)+'" style="background:'+colorOf(n)+'" aria-pressed="'+(!shared&&x.d.who.indexOf(n)>=0)+'">'+esc(n)+'</button>';}).join("")+'</div>':"");}).join("")||'<p class="hint">Ei vaiheita. Lisää alta.</p>';
         var have=st.map(function(x){return x.row.text.toLowerCase();});
         var sug=KM_DEF[tab].concat(KM_SUGG[tab]).filter(function(x,i,a){return have.indexOf(x[1].toLowerCase())<0&&a.findIndex(function(y){return y[1]===x[1];})===i;});
         if(sug.length)html+='<span class="flabel">Lisää vaihe</span><div class="kmsug">'+sug.map(function(x){return '<button type="button" data-sug="'+esc(x[0])+'|'+esc(x[1])+'">'+x[0]+' '+esc(x[1])+'</button>';}).join("")+'</div>';
         html+='<div class="kmrow"><input class="em" id="kmNewE" maxlength="4" placeholder="⭐" aria-label="Kuva (emoji)"><input class="tx" id="kmNewT" maxlength="30" placeholder="Oma vaihe, esim. Kammaa tukka"><button class="btn sm" type="button" id="kmAdd">Lisää</button></div>';
+        if(kidsAll.length>1)html+='<p class="hint">'+(kid?"Uudet vaiheet tulevat vain lapselle "+esc(kid)+". Roskakori poistaa vaiheen vain häneltä. ":"")+'Kaikille-merkityt vaiheet ovat yhteisiä: niiden nimen tai kuvan muutos näkyy kaikille. Napauta nimeä vaiheen vieressä vaihtaaksesi, kenelle se kuuluu.</p>';
         html+='<p class="hint">Lapsi kuittaa vaiheet napauttamalla. Kun kaikki on tehty, hän saa tähden, joka kasvattaa kukkia myös sukupuupelissä. Kuvaksi käy mikä tahansa emoji.</p>';
       }else{
         var t=ymd(new Date()),cs=kmItems().filter(function(x){return x.d.kind==="count";}).sort(function(a,b){return String(a.d.date).localeCompare(String(b.d.date));});
@@ -759,18 +817,35 @@ function kidModeSheet(tab){
       s.querySelector("#kmClose").onclick=closeSheet;
       s.querySelector("#kmOpen").onclick=function(){location.href="lapsi.html";};
       s.querySelectorAll("[data-tab]").forEach(function(b){b.onclick=function(){tab=b.dataset.tab;draw();};});
+      if(tab==="star"){kmStarBind(s,kidsAll,draw);return;}
       s.querySelectorAll(".kmrow[data-id]").forEach(function(r){
         var id=r.dataset.id;
         r.querySelectorAll("input").forEach(function(inp){inp.onchange=function(){var x=byId(id);if(!x)return;
           var e=r.querySelector(".em").value.trim(),tx=r.querySelector(".tx").value.trim(),dt=r.querySelector(".dt");
           if(tx)x.row.text=tx;x.d.emoji=e||x.d.emoji;if(dt&&dt.value)x.d.date=dt.value;kmSave(x);};});
-        var del=r.querySelector("[data-del]");if(del)confirmBtn(del,function(){kmDel(id);draw();});
+        var del=r.querySelector("[data-del]");if(del)confirmBtn(del,function(){var x=byId(id);if(!x)return;
+          if(!kid||tab==="count"){kmDel(id);draw();return;}
+          var w=x.d.who&&x.d.who.length?x.d.who.slice():kidsAll.slice();w=w.filter(function(n){return n!==kid;});
+          if(!w.length)kmDel(id);else{x.d.who=w;kmSave(x);}draw();});
+        var wb=r.querySelector("[data-who]");if(wb)wb.onclick=function(){openWho=openWho===id?"":id;draw();};
         r.querySelectorAll("[data-mv]").forEach(function(b){b.onclick=function(){
-          var st=kmSteps(tab),i=st.findIndex(function(x){return x.row.id===id;}),j=i+(+b.dataset.mv);if(i<0||j<0||j>=st.length)return;
-          var a=st[i];st[i]=st[j];st[j]=a;st.forEach(function(x,n){if(x.d.order!==n+1){x.d.order=n+1;kmSave(x);}});draw();};});
+          /* order is shared: swap with the neighbour this child sees, keep the others in place */
+          var full=kmSteps(tab),vis=full.filter(function(x){return kmFor(x,kid);}),i=vis.findIndex(function(x){return x.row.id===id;}),j=i+(+b.dataset.mv);if(i<0||j<0||j>=vis.length)return;
+          var fi=full.indexOf(vis[i]),fj=full.indexOf(vis[j]),a=full[fi];full[fi]=full[fj];full[fj]=a;full.forEach(function(x,n){if(x.d.order!==n+1){x.d.order=n+1;kmSave(x);}});draw();};});
       });
+      s.querySelectorAll(".kmwhos").forEach(function(box){var id=box.dataset.for;box.querySelectorAll("[data-w]").forEach(function(b){b.onclick=function(){var x=byId(id);if(!x)return;
+        var n=b.dataset.w,w=x.d.who&&x.d.who.length?x.d.who.slice():[];
+        if(!n)w=[];else if(w.indexOf(n)>=0)w=w.filter(function(y){return y!==n;});else w.push(n);
+        if(w.length>=kidsAll.length)w=[];
+        if(w.length)x.d.who=kidsAll.filter(function(y){return w.indexOf(y)>=0;});else delete x.d.who;
+        kmSave(x);if(kid&&!kmFor(x,kid))openWho="";draw();};});});
+      s.querySelectorAll("[data-kid]").forEach(function(b){b.onclick=function(){kid=b.dataset.kid;lsSet("kmKid",kid);openWho="";draw();};});
       function addStep(e,tx){var st=kmSteps(tab),o=st.length?(st[st.length-1].d.order||st.length)+1:1;
-        kmSave({row:{id:newId(),list:KM_LIST,text:tx.slice(0,30),done:"",ts:Date.now(),data:"{}"},d:{kind:"step",routine:tab,emoji:e||"⭐",order:o}});draw();}
+        /* the same step already exists for another child: just add this child to it */
+        var same=kid&&st.filter(function(x){return x.row.text.toLowerCase()===tx.toLowerCase()&&x.d.who&&x.d.who.length;})[0];
+        if(same){same.d.who.push(kid);if(same.d.who.length>=kidsAll.length)delete same.d.who;kmSave(same);draw();return;}
+        var d={kind:"step",routine:tab,emoji:e||"⭐",order:o};if(kid)d.who=[kid];
+        kmSave({row:{id:newId(),list:KM_LIST,text:tx.slice(0,30),done:"",ts:Date.now(),data:"{}"},d:d});draw();}
       s.querySelectorAll("[data-sug]").forEach(function(b){b.onclick=function(){var p=b.dataset.sug.split("|");addStep(p[0],p[1]);};});
       s.querySelectorAll("[data-cem]").forEach(function(b){b.onclick=function(){s.querySelector("#kmNewE").value=b.dataset.cem;s.querySelector("#kmNewT").focus();};});
       var add=s.querySelector("#kmAdd");add.onclick=function(){
@@ -1629,6 +1704,9 @@ function settingsSheet(){
      '<div class="chips" id="layTop"><span class="hint" style="align-self:center">Keskellä ylempänä:</span></div>'+
      '<div class="chips" id="layShow"></div><p class="hint">Muutos näkyy heti ja koskee vain tätä laitetta.</p></div>'+
    '<div class="field"><span class="flabel">Lapsi-tila</span><div class="chips"><button class="btn" type="button" id="kmEdit">🧸 Muokkaa lapsi-tilan sisältöä</button></div><p class="hint">Rutiinit ja laskurit. Päivän ohjelmaan tulevat tapahtumat, joissa kenen-kohtana on lapsi, ja Lapsille mukaan -asiat.</p></div>'+
+   '<div class="field"><span class="flabel">Yötila tällä laitteella</span><div class="chips" id="nMode"></div>'+
+     '<div class="chips" id="nTime" style="align-items:center"></div>'+
+     '<p class="hint">Yöllä taulu vaihtuu mustaksi, himmeäksi kelloksi, jossa näkyy myös seuraavan päivän ensimmäiset menot. Kosketus tuo taulun värit takaisin kahdeksi minuutiksi. Musta näyttö piilottaa kellonkin ja antaa padin näytön sammua padin omien asetusten mukaan.</p></div>'+
    '<div class="field"><span class="flabel">Teema tällä laitteella</span><div class="chips" id="theme">'+
      [["auto","Automaattinen (tumma klo 21–7)"],["light","Vaalea"],["dark","Tumma"]].map(function(t){return '<button type="button" class="chip none" data-t="'+t[0]+'" aria-pressed="'+(theme===t[0])+'">'+t[1]+'</button>';}).join("")+'</div></div>'+
    '<div class="sheet-actions"><button class="btn danger" type="button" id="forget">Unohda avain</button><button class="btn" type="button" id="cancel">Peruuta</button><button class="btn primary" type="button" id="save">Tallenna</button></div>',
@@ -1659,6 +1737,21 @@ function settingsSheet(){
       s.querySelectorAll("[data-ls]").forEach(function(b){b.onclick=function(){var P=layoutPrefs(),k=b.dataset.ls;P.hide[k]=!P.hide[k];lsSet("layout",JSON.stringify(P));applyLayout();drawLay();};});
     }
     drawLay();
+    /* night mode: instant, per device */
+    function drawNightUi(){
+      var P=nightPrefs();
+      s.querySelector("#nMode").innerHTML=[["off","Pois"],["dim","Himmeä kello"],["black","Musta näyttö"]].map(function(m){return '<button type="button" class="chip none" data-nm="'+m[0]+'" aria-pressed="'+(P.mode===m[0])+'">'+m[1]+'</button>';}).join("")+
+        (P.mode!=="off"?'<button type="button" class="btn sm" id="nTry">Kokeile</button>':"");
+      function opts(list,v){return list.map(function(h){return '<option value="'+h+'"'+(h===v?" selected":"")+'>'+pad(h)+'.00</option>';}).join("");}
+      s.querySelector("#nTime").innerHTML=P.mode==="off"?"":'<span class="hint">Alkaa</span><select id="nFrom" style="width:auto;flex:none">'+opts([19,20,21,22,23,0,1],P.from)+'</select><span class="hint">ja päättyy</span><select id="nTo" style="width:auto;flex:none">'+opts([4,5,6,7,8,9],P.to)+'</select>';
+      function put(f){var Q=nightPrefs();f(Q);lsSet("night",JSON.stringify(Q));drawNightUi();nightCheck();}
+      s.querySelectorAll("[data-nm]").forEach(function(b){b.onclick=function(){put(function(Q){Q.mode=b.dataset.nm;});};});
+      var fr=s.querySelector("#nFrom"),to=s.querySelector("#nTo");
+      if(fr)fr.onchange=function(){put(function(Q){Q.from=+fr.value;});};
+      if(to)to.onchange=function(){put(function(Q){Q.to=+to.value;});};
+      var tr=s.querySelector("#nTry");if(tr)tr.onclick=function(){closeSheet();setTimeout(function(){S.nightTest=true;setNight(true);},300);};
+    }
+    drawNightUi();
     s.querySelector("#kmEdit").onclick=function(){closeSheet();kidModeSheet();};
     var th=s.querySelectorAll("#theme .chip");for(i=0;i<th.length;i++)th[i].onclick=function(){for(var j=0;j<th.length;j++)th[j].setAttribute("aria-pressed","false");this.setAttribute("aria-pressed","true");theme=this.dataset.t;};
     s.querySelector("#stops").oninput=drawNames;
@@ -1765,6 +1858,7 @@ function applyBg(){
   }
   function stop(){if(raf)cancelAnimationFrame(raf);raf=0;last=0;}
   window.fxRestart=function(){
+    if(S.night){stop();if(ctx)ctx.clearRect(0,0,W,H);return;}
     var cs=getComputedStyle(document.documentElement);
     rgb=(cs.getPropertyValue("--fx-rgb")||"70,105,125").trim();glow=(cs.getPropertyValue("--glow-rgb")||"255,196,90").trim();
     var j=S.weather;wind=j&&j.current?Math.min(j.current.wind_speed_10m||0,15)/15:0;
@@ -1801,20 +1895,74 @@ S.view=({next7:1,day:1,week:1,month:1})[lsGet("calView","next7")]?lsGet("calView
 $("#weather").onclick=function(){wxSheet("hours");};
 (function(){var b=document.querySelectorAll(".seg button");for(var i=0;i<b.length;i++)b[i].onclick=function(){S.view=this.dataset.v;lsSet("calView",S.view);renderWeek();};})();
 
+/* ---------- night mode: a dim clock on black; a touch brings the colours back for two minutes ---------- */
+function nightPrefs(){var d={mode:"dim",from:22,to:6};try{var p=JSON.parse(lsGet("night","null"));if(p){if(p.mode)d.mode=p.mode;if(p.from!=null)d.from=+p.from;if(p.to!=null)d.to=+p.to;}}catch(e){}return d;}
+function nightHours(p,h){return p.from>p.to?(h>=p.from||h<p.to):(h>=p.from&&h<p.to);}
+S.lastTouch=Date.now();S.night=false;
+document.addEventListener("pointerdown",function(){S.lastTouch=Date.now();S.nightTest=false;if(S.night){S.swallow=true;setNight(false);}},true);
+/* the tap that wakes the board must not also press whatever is under it */
+document.addEventListener("click",function(e){if(S.swallow){S.swallow=false;e.stopPropagation();e.preventDefault();}},true);
+document.addEventListener("pointerup",function(){setTimeout(function(){S.swallow=false;},400);},true);
+function nightCheck(){
+  var p=nightPrefs(),want=S.nightTest||(p.mode!=="off"&&nightHours(p,new Date().getHours())&&Date.now()-S.lastTouch>120000);
+  if(want!==S.night)setNight(want);else if(S.night)drawNight();
+}
+function setNight(on){
+  S.night=on;var el=$("#night"),p=nightPrefs();el.hidden=!on;el.classList.toggle("black",on&&p.mode==="black");
+  if(on){drawNight();if(window.fxRestart)fxRestart();
+    /* black screen: let the tablet's own screen timeout switch the display off */
+    if(p.mode==="black"&&lock){lock.release().catch(function(){});lock=null;}}
+  else{if(S.kiosk)wake();if(window.fxRestart)fxRestart();loadBus();}
+}
+function drawNight(){
+  var d=new Date(),p=nightPrefs();
+  $("#nclock").textContent=pad(d.getHours())+":"+pad(d.getMinutes());
+  var morning=d.getHours()<12,k=ymd(morning?d:new Date(d.getTime()+864e5));
+  var ev=itemsOn(k).filter(function(e){return e.time;}).slice(0,2),w=kidWear(k);
+  $("#nday").textContent=(morning?"Tänään ":"Huomenna ")+DAYS_LONG[dow(pd(k))]+(w?" · aamulla "+rnd(w.t)+"°":"");
+  $("#nnext").innerHTML=ev.map(function(e){return esc(fmtT(e.time)+" "+e.text);}).join("<br>");
+  /* drift a little every minute so nothing burns into the screen */
+  if(S.nightMin!==d.getMinutes()){S.nightMin=d.getMinutes();var x=(Math.random()*2-1)*(window.innerWidth*.12),y=(Math.random()*2-1)*(window.innerHeight*.12);
+    $("#nbox").style.transform="translate(calc(-50% + "+Math.round(x)+"px),calc(-50% + "+Math.round(y)+"px))";}
+}
+
+/* ---------- self-update: when a new version is on GitHub, reload at a quiet moment ---------- */
+var UPD={base:null,pending:false};
+function strHash(t){var h=0;for(var i=0;i<t.length;i++){h=(h*31+t.charCodeAt(i))|0;}return h+":"+t.length;}
+function checkUpdate(){
+  if(!/^https?:$/.test(location.protocol))return;
+  fetch(location.pathname+"?u="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():null;}).then(function(t){
+    if(!t||t.indexOf("<html")<0)return;var h=strHash(t);
+    if(UPD.base===null){UPD.base=h;return;}
+    if(h!==UPD.base){UPD.pending=true;tryReload();}
+  }).catch(function(){});
+}
+function tryReload(){
+  if(!UPD.pending)return;
+  var busy=S.inflight||!$("#overlay").hidden||S.listOpen||(!S.night&&Date.now()-S.lastTouch<120000);
+  if(busy){clearTimeout(UPD.t);UPD.t=setTimeout(tryReload,60000);return;}
+  lsSet("updAt",String(Date.now()));if(document.fullscreenElement)lsSet("reFull","1");
+  location.reload();
+}
+
 /* kiosk: fullscreen + keep the screen on */
 var lock=null;
 function wake(){if(!("wakeLock" in navigator)||lock)return Promise.resolve();return navigator.wakeLock.request("screen").then(function(l){lock=l;l.addEventListener("release",function(){lock=null;});}).catch(function(){});}
 $("#kiosk").onclick=function(){
-  S.kiosk=true;lsSet("kiosk","1");wake();
+  S.kiosk=true;lsSet("kiosk","1");wake();lsSet("reFull","");
   var de=document.documentElement;
   if(!document.fullscreenElement&&de.requestFullscreen)de.requestFullscreen().catch(function(){});
   else if(document.exitFullscreen&&document.fullscreenElement)document.exitFullscreen();
 };
+/* after a self-update the first tap returns to full screen (browsers only allow it from a tap) */
+document.addEventListener("click",function(){if(lsGet("reFull","")==="1"&&!document.fullscreenElement){lsSet("reFull","");var de=document.documentElement;if(de.requestFullscreen)de.requestFullscreen().catch(function(){});}},true);
 document.addEventListener("visibilitychange",function(){
-  if(document.visibilityState==="visible"){if(S.kiosk)wake();load();loadBus();if(Date.now()-(S.weatherTime||0)>10*60000)loadWeather();}
+  if(document.visibilityState==="visible"){if(S.kiosk&&!(S.night&&nightPrefs().mode==="black"))wake();load();if(!S.night)loadBus();checkUpdate();if(Date.now()-(S.weatherTime||0)>10*60000)loadWeather();}
 });
 /* any tap re-arms the wake lock (browsers require a gesture) */
 document.addEventListener("click",function(){if(S.kiosk)wake();},true);
+S.kiosk=lsGet("kiosk","")==="1";if(S.kiosk)wake();
+if(Date.now()-(+lsGet("updAt","0")||0)<60000){lsSet("updAt","");S.lastTouch=0;}
 
 /* ---------- start ---------- */
 applyLayout();applyTheme();applyBg();tick();renderAll();
@@ -1825,7 +1973,9 @@ else if(!key()){askKey();}
 else{load().then(function(){loadBus();loadWeather();if(location.hash==='#listat')listsSheet();});}
 if(!configured())loadBus();
 setInterval(function(){if(document.visibilityState==="visible")load();},30000);
-setInterval(function(){if(document.visibilityState==="visible")loadBus();},30000);
+setInterval(function(){if(document.visibilityState==="visible"&&!S.night)loadBus();},30000);
+setInterval(function(){if(document.visibilityState==="visible")checkUpdate();},10*60000);
+setTimeout(checkUpdate,5000);
 setInterval(function(){if(document.visibilityState==="visible")loadWeather();},15*60000);
 })();
 </script>

@@ -30,7 +30,13 @@ button{font:inherit;color:inherit;cursor:pointer}
 .hello h1{margin:0;font-size:clamp(26px,3.4vw,38px);font-weight:700;line-height:1.05;text-wrap:balance}
 .hello p{margin:2px 0 0;font-size:clamp(16px,1.9vw,21px);color:var(--soft);font-weight:600}
 .stars{display:flex;align-items:center;gap:6px;background:var(--card);border-radius:999px;padding:6px 14px 6px 8px;box-shadow:var(--shadow);font-weight:700;font-size:24px;flex:none}
+.stars{border:none;font-family:inherit;color:var(--ink)}
 .stars .st{font-size:30px;display:inline-block}
+.stars .play{margin-left:4px;background:var(--grape);color:#fff;border-radius:999px;padding:2px 12px;font-size:18px}
+.gift{position:fixed;inset:0;z-index:25;background:rgba(43,42,76,.35);display:grid;place-items:center}
+.gift div{background:#fff;border-radius:32px;padding:24px 30px;text-align:center;box-shadow:var(--shadow);max-width:90%}
+.gift .e{font-size:110px;line-height:1;animation:pop .9s ease}
+.gift b{display:block;font-size:30px;margin-top:6px}.gift span{display:block;font-size:22px;color:var(--soft);margin-top:4px}
 .stars.pop .st{animation:pop .7s ease}
 .gear{width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.55);position:relative;flex:none;display:grid;place-items:center;touch-action:none}
 .gear svg{width:24px;height:24px;opacity:.5}
@@ -148,7 +154,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div class="app" id="app">
   <div class="top">
     <div class="hello"><h1 id="hi">Hei!</h1><p id="today"></p></div>
-    <div class="stars" id="stars" aria-label="Tähdet"><span class="st">⭐</span><span id="starN">0</span></div>
+    <button class="stars" id="stars" type="button" aria-label="Tähdet"><span class="st">⭐</span><span id="starN">0</span><span class="play" id="starPlay" hidden>Pelaa</span></button>
     <button class="gear" id="gear" type="button" aria-label="Aikuisille: pidä pohjassa">
       <span class="ring" id="ring"></span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
@@ -281,7 +287,7 @@ function child(){var ks=kids();if(ks.indexOf(S.child)>=0)return S.child;if(ks.le
 
 /* ---------- content ---------- */
 function rows(list){return S.items.filter(function(i){return i.list===list;}).map(function(i){return {row:i,d:pjson(i.data)};});}
-function steps(r){return rows(KM_LIST).filter(function(x){return x.d.kind==="step"&&x.d.routine===r;}).sort(function(a,b){return (a.d.order||0)-(b.d.order||0);});}
+function steps(r){var c=child();return rows(KM_LIST).filter(function(x){var w=x.d.who;return x.d.kind==="step"&&x.d.routine===r&&(!w||!w.length||w.indexOf(c)>=0);}).sort(function(a,b){return (a.d.order||0)-(b.d.order||0);});}
 function ensureDefaults(){
   if(rows(KM_LIST).some(function(x){return x.d.kind==="step";}))return;
   ["aamu","ilta"].forEach(function(r){KM_DEF[r].forEach(function(s,i){
@@ -324,6 +330,7 @@ function render(){
     '<div class="col"><div class="card grow" id="rCard"></div></div>'+
     '<div class="col"><div class="card scroll" id="pCard" style="flex:1 1 50%"></div><div class="card scroll" id="mCard" style="flex:1 1 50%"></div></div>';
   drawWeather();drawCount();drawRoutine();drawProgram();drawPack();
+  var on=gamesOn();$("#starPlay").hidden=!on;if(on){loadGames();showGifts();compactStars();}
 }
 function drawWeather(){
   var w=kidWeather(),el=$("#wx");if(!el)return;
@@ -365,23 +372,73 @@ function drawRoutine(){
     if(on&&cnt===all.length)celebrate(r);
   };});
 }
+/* ---------- star games: switched on from the board (Lapsi-tila → Tähdet); the games are in tahtipelit.js ----------
+   With games on, each child has own stars in the family sheet: rows of kind "star" (+1 for a routine or from a parent, −1 for a game). */
+function cfg(){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="cfg";})[0];return x?x.d:{};}
+function gamesOn(){return !!cfg().games;}
+function starRows(c){return rows(KM_LIST).filter(function(x){return x.d.kind==="star"&&x.d.who===c;});}
+function balance(c){return Math.max(0,starRows(c).reduce(function(a,x){return a+(+x.d.n||0);},0));}
+function playsToday(c){var t=ymd(new Date());return starRows(c).filter(function(x){return x.d.game&&x.d.date===t;}).length;}
+function bumpPill(){$("#starN").textContent=stars();var s=$("#stars");s.classList.remove("pop");void s.offsetWidth;s.classList.add("pop");}
+function gameApi(){var c=child();return {child:c,say:say,sOn:sOn,sOff:sOff,sFanfare:sFanfare,tone:tone,
+  balance:function(){return balance(c);},plays:function(){return playsToday(c);},max:function(){var m=cfg().max;return m==null?3:+m;},
+  spend:function(g){if(balance(c)<1)return false;save({id:newId(),list:KM_LIST,text:"Peli",done:"",ts:Date.now(),data:JSON.stringify({kind:"star",who:c,n:-1,date:ymd(new Date()),game:g,seen:true})});return true;},
+  album:function(){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];return x&&x.d.s||{};},
+  addSticker:function(e){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];
+    var row=x?x.row:{id:"alb-"+newId(),list:KM_LIST,text:"Tarrat",done:"",ts:Date.now(),data:"{}"},d=x?x.d:{kind:"album",who:c,s:{}};
+    d.s=d.s||{};d.s[e]=(d.s[e]||0)+1;row.data=JSON.stringify(d);save(row);},
+  changed:function(){$("#starN").textContent=stars();}};}
+function loadGames(){
+  if(window.StarGames||S.gamesLoading)return;S.gamesLoading=true;
+  var sc=document.createElement("script");sc.src="tahtipelit.js?v="+Math.floor(Date.now()/36e5);sc.onerror=function(){S.gamesLoading=false;};document.head.appendChild(sc);
+}
+$("#stars").onclick=function(){
+  if(gamesOn()&&window.StarGames&&child()){StarGames.menu(gameApi());return;}
+  var n=stars();say(n?"Sinulla on "+n+(n===1?" tähti!":" tähteä!"):"Tähdet saat tekemällä tehtävät.");
+};
+/* stars a grown-up gave from the board: shown once with the reason */
+function showGifts(){
+  if(!gamesOn()||S.gift||$(".sg"))return;var c=child();
+  var g=starRows(c).filter(function(x){return x.d.by==="parent"&&x.d.n>0&&!x.d.seen;})[0];if(!g)return;
+  S.gift=true;var o=document.createElement("div");o.className="gift";
+  o.innerHTML='<div><span class="e">'+(g.d.n>1?"🌟":"⭐")+'</span><b>Sait '+(g.d.n>1?g.d.n+" tähteä":"tähden")+'!</b>'+(g.d.why?'<span>'+esc(g.d.why)+'</span>':"")+'</div>';
+  document.body.appendChild(o);sFanfare();T0(function(){say("Sait "+(g.d.n>1?g.d.n+" tähteä":"tähden")+"! "+cleanText(g.d.why||""));},500);
+  g.d.seen=true;g.row.data=JSON.stringify(g.d);save(g.row);
+  function done(){o.remove();S.gift=false;bumpPill();showGifts();}
+  o.onclick=done;T0(done,5000);
+}
+function T0(f,ms){return setTimeout(f,ms);}
+/* rows older than 90 days are folded into one row per child, so the sheet stays small */
+function compactStars(){
+  var t=ymd(new Date());if(S.compacted===t||S.inflight)return;S.compacted=t;
+  var cut=ymd(addDays(new Date(),-90));
+  kids().forEach(function(c){
+    var old=starRows(c).filter(function(x){return x.row.id!=="sb-"+c&&x.d.date&&x.d.date<cut;});if(old.length<20)return;
+    var base=starRows(c).filter(function(x){return x.row.id==="sb-"+c;})[0],sum=old.reduce(function(a,x){return a+(+x.d.n||0);},0);
+    var d=base?base.d:{kind:"star",who:c,n:0,date:"2000-01-01",why:"Aiemmat",seen:true};d.n=(+d.n||0)+sum;
+    save({id:"sb-"+c,list:KM_LIST,text:"Aiemmat tähdet",done:"",ts:base?base.row.ts:1,data:JSON.stringify(d)});
+    old.forEach(function(x){S.items=S.items.filter(function(i){return i.id!==x.row.id;});queue({op:"delete",table:"items",id:x.row.id});});
+  });
+}
 /* one star per routine per day; stars also grow flowers in the family tree game on this device */
-function stars(){try{var g=JSON.parse(localStorage.getItem("sukupuu.v1")||"null");if(g&&typeof g.stars==="number")return g.stars;}catch(e){}return +lsGet("lapsi.stars","0")||0;}
-function addStar(){
+function stars(){if(gamesOn()&&child())return balance(child());try{var g=JSON.parse(localStorage.getItem("sukupuu.v1")||"null");if(g&&typeof g.stars==="number")return g.stars;}catch(e){}return +lsGet("lapsi.stars","0")||0;}
+function addStar(r){
+  if(gamesOn()){var c=child(),t=ymd(new Date());
+    save({id:"st-"+t+"-"+r+"-"+c,list:KM_LIST,text:"Tähti",done:"",ts:Date.now(),data:JSON.stringify({kind:"star",who:c,n:1,date:t,why:r==="aamu"?"Aamu tehty":"Ilta tehty",seen:true})});}
   lsSet("lapsi.stars",String((+lsGet("lapsi.stars","0")||0)+1));
   try{var g=JSON.parse(localStorage.getItem("sukupuu.v1")||"null");if(g&&g.people){g.stars=(g.stars||0)+1;localStorage.setItem("sukupuu.v1",JSON.stringify(g));}}catch(e){}
   $("#starN").textContent=stars();var s=$("#stars");s.classList.remove("pop");void s.offsetWidth;s.classList.add("pop");
 }
 function celebrate(r){
   var aw={};try{aw=JSON.parse(lsGet("lapsi.awards","{}"))||{};}catch(e){}
-  var id=doneKey()+"|"+r,first=!aw[id],t=ymd(new Date());
+  var id=doneKey()+"|"+r,t=ymd(new Date()),first=!aw[id]&&!(gamesOn()&&S.items.some(function(i){return i.id==="st-"+t+"-"+r+"-"+child();}));
   Object.keys(aw).forEach(function(x){if(x.slice(0,10)<t)delete aw[x];});
   aw[id]=1;lsSet("lapsi.awards",JSON.stringify(aw));
   var p=$("#party"),html=first?'<div class="bigstar">⭐</div>':"",bits=["🎉","⭐","🌟","🎈","✨","💖","🌈"];
   for(var i=0;i<26;i++)html+='<span class="c" style="left:'+Math.round(Math.random()*96)+'%;animation-delay:'+(Math.random()*.6).toFixed(2)+'s">'+bits[i%bits.length]+'</span>';
   p.innerHTML=html;sFanfare();
   setTimeout(function(){say((r==="aamu"?"Hienoa "+child()+"! Aamun tehtävät on tehty!":"Hienoa "+child()+"! Illan tehtävät on tehty! Hyvää yötä!")+(first?" Sait tähden!":""));},700);
-  if(first)setTimeout(addStar,1900);
+  if(first)setTimeout(function(){addStar(r);},1900);
   setTimeout(function(){p.innerHTML="";},3200);
 }
 function drawProgram(){
@@ -449,10 +506,22 @@ function menu(){
   };});
 }
 
+/* self-update: reload when a new version is on GitHub and nobody has touched the page for two minutes */
+var UPD={base:null},lastTouch=Date.now();
+document.addEventListener("pointerdown",function(){lastTouch=Date.now();},true);
+function checkUpdate(){
+  if(!/^https?:$/.test(location.protocol))return;
+  fetch(location.pathname+"?u="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():null;}).then(function(t){
+    if(!t||t.indexOf("<html")<0)return;var h=0;for(var i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))|0;h=h+":"+t.length;
+    if(UPD.base===null){UPD.base=h;return;}
+    if(h!==UPD.base)(function retry(){if(S.inflight||$(".ov")||$(".sg")||Date.now()-lastTouch<120000){setTimeout(retry,60000);return;}location.reload();})();
+  }).catch(function(){});
+}
+setTimeout(checkUpdate,5000);setInterval(checkUpdate,10*60000);
 render();load();loadWeather();
 setInterval(function(){if(!S.inflight)load();loadWeather();},5*60000);
 /* redraw each minute so greeting, routine and "tomorrow" switch at the right time */
-var lastMin="";setInterval(function(){var d=new Date(),m=d.getHours()+":"+(d.getMinutes()<30?0:1);if(m!==lastMin&&!S.inflight&&!$(".ov")){lastMin=m;render();}},60000);
+var lastMin="";setInterval(function(){var d=new Date(),m=d.getHours()+":"+(d.getMinutes()<30?0:1);if(m!==lastMin&&!S.inflight&&!$(".ov")&&!$(".sg")){lastMin=m;render();}},60000);
 })();
 </script>
 </body>

@@ -429,7 +429,7 @@ setInterval(function(){if(document.visibilityState==="visible"){if(Q.length)flus
    Derived data
    ========================================================= */
 function typeOf(l){if(TYPES[l.type])return l.type;var n=norm(l.name);if(/kauppa|ostos/.test(n))return "shop";if(/pakkaus/.test(n))return "pack";return "basic";}
-function visible(l){if(l.type==="kids"||(l.d&&l.d.template))return false;if(typeOf(l)==="gift"&&l.d.hideFrom&&l.d.hideFrom===me())return false;return true;}
+function visible(l){if(l.type==="kids"||l.type==="kmode"||(l.d&&l.d.template))return false;if(typeOf(l)==="gift"&&l.d.hideFrom&&l.d.hideFrom===me())return false;return true;}
 function listById(id){for(var i=0;i<D.lists.length;i++)if(D.lists[i].id===id)return D.lists[i];return null;}
 function itemsOf(id){return D.items.filter(function(i){return i.list===id;});}
 function histFor(text){var t=norm(text);for(var i=0;i<D.history.length;i++)if(norm(D.history[i].text)===t)return D.history[i];return null;}

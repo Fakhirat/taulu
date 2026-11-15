@@ -1,13 +1,21 @@
 /* Tähtipelit: minipelit, joihin lapsi käyttää tähtiään lapsi-tilassa (lapsi.html).
    Päälle ja pois taulun asetuksista: Lapsi-tila → Tähdet. Tämä tiedosto ladataan vain, kun pelit ovat päällä,
    joten sen voi poistaa ilman että lapsi-tila hajoaa.
-   Lapsi-tila antaa olion api: {child, say, sOn, sOff, sFanfare, tone, balance(), plays(), max(), trickLevel(), spend(game), addSticker(e), album(), albumPlace(), placeSave(list), changed()} */
+   Lapsi-tila antaa olion api: {child, gamesOn, pickReward(), say, sOn, sOff, sFanfare, tone, balance(), plays(), max(), trickLevel(), spend(game), addSticker(e), album(), albumPlace(), placeSave(list), changed()} */
 (function(){
 "use strict";
-var STICKERS=[["🦊","kettu"],["🐻","karhu"],["🐰","pupu"],["🦉","pöllö"],["🐸","sammakko"],["🦔","siili"],["🐿️","orava"],["🦌","peura"],
+var OLD_STICKERS=[["🦊","kettu"],["🐻","karhu"],["🐰","pupu"],["🦉","pöllö"],["🐸","sammakko"],["🦔","siili"],["🐿️","orava"],["🦌","peura"],
   ["🐟","kala"],["🐞","leppäkerttu"],["🦋","perhonen"],["🐝","mehiläinen"],["🐧","pingviini"],["🦁","leijona"],["🐘","norsu"],["🦒","kirahvi"],
   ["🐢","kilpikonna"],["🐬","delfiini"],["🦄","yksisarvinen"],["🐉","lohikäärme"],["🚒","paloauto"],["🚜","traktori"],["🚀","raketti"],["🚂","juna"],
   ["🚁","helikopteri"],["⛵","purjevene"],["🌈","sateenkaari"],["🍓","mansikka"]];
+/* the catalogue is in tarrat.js (shared with the board); the old 28 are used if that file is missing */
+var CAT=window.TARRAT||(function(){var all=OLD_STICKERS.map(function(x){return {e:x[0],n:x[1],t:"kaikki"};});function base(k){return String(k||"").replace(/\*$/,"");}
+  return {themes:[{id:"kaikki",n:"Tarrat",e:"📒",list:OLD_STICKERS}],all:all,count:all.length,base:base,shiny:function(k){return /\*$/.test(String(k||""));},
+    name:function(k){var b=base(k);var x=all.filter(function(y){return y.e===b;})[0];return x?x.n:"";},theme:function(){return "kaikki";},SHINY_CHANCE:0.08};})();
+var STICKERS=CAT.all.map(function(x){return [x.e,x.n];});
+/* sticker element: shiny ones glitter */
+function stHtml(k,cls){return '<span class="'+(cls||"")+(CAT.shiny(k)?" shiny":"")+'">'+CAT.base(k)+'</span>';}
+function ownedBase(have){var o={};Object.keys(have).forEach(function(k){if(have[k]>0)o[CAT.base(k)]=1;});return o;}
 /* tricks: [emoji, text, count (0 = none), level 1 easy / 2 medium / 3 challenge, own phrase (no "N kertaa")] */
 var TRICKS=[
   ["🐸","Hyppää kuin sammakko",3,1],["🦩","Seiso yhdellä jalalla kuin flamingo. Lasketaan viiteen!",5,1,1],["🦒","Kurkota kattoon kuin kirahvi",3,1],
@@ -74,6 +82,15 @@ var css='.sg{position:fixed;inset:0;z-index:50;background:linear-gradient(180deg
   '.sg-ghost{position:fixed;z-index:80;font-size:72px;line-height:1;transform:translate(-50%,-60%) scale(1.1);pointer-events:none;filter:drop-shadow(0 8px 8px rgba(0,0,0,.25))}'+
   '.sg-pl.wig{animation:sgwig .5s ease}@keyframes sgwig{25%{transform:translate(-50%,-50%) rotate(-12deg)}75%{transform:translate(-50%,-50%) rotate(12deg)}}'+
   '.sg-tr.wig{animation:sgpop .4s}'+
+  '.shiny{position:relative;display:inline-block;filter:drop-shadow(0 0 6px #ffd84d) drop-shadow(0 0 2px #fff) saturate(1.3);animation:sgshine 1.8s ease-in-out infinite}'+
+  '@keyframes sgshine{50%{filter:drop-shadow(0 0 14px #ffe873) drop-shadow(0 0 4px #fff) saturate(1.6) brightness(1.15)}}'+
+  '.sg-pl.shiny{display:block;animation:sgshine 1.8s ease-in-out infinite}.sg-tr.shiny{background:linear-gradient(135deg,#fff7c2,#fff 50%,#ffe7f3)}'+
+  '.sg-st.shiny{background:linear-gradient(135deg,#fff7c2,#fff 50%,#ffe7f3)}'+
+  '.sg-choose{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}'+
+  '.sg-ch{position:relative;border:none;background:#fff;border-radius:28px;width:min(150px,28vw);aspect-ratio:1;font-size:min(80px,15vw);box-shadow:0 7px 0 rgba(43,42,76,.12);display:grid;place-items:center;transition:transform .3s,opacity .3s}'+
+  '.sg-ch:active{transform:scale(.94)}.sg-ch i{position:absolute;top:-8px;right:-6px;font-style:normal;font-size:15px;font-weight:700;background:#ff8fb1;color:#fff;border-radius:999px;padding:2px 10px}'+
+  '.sg-ch.away{opacity:0;transform:scale(.6)}.sg-ch.picked{transform:scale(1.2)}'+
+  '.sg-th{width:100%;max-width:960px}.sg-th h3{margin:10px 0 6px;font-size:22px;display:flex;align-items:center;gap:8px}.sg-th h3 span{font-size:16px;color:#6b6a8f}.sg-th h3 b{font-size:24px}'+
   '@media (prefers-reduced-motion:reduce){.sg *{animation:none!important;transition:none!important}}';
 var st=document.createElement("style");st.textContent=css;document.head.appendChild(st);
 
@@ -107,7 +124,7 @@ function menu(api){
     '<div class="sg-menu">'+
       '<button class="sg-card'+(bal<1||full?" off":"")+'" type="button" data-g="trick"><span class="e">🤸</span><b>Tee temppu</b><span class="c">⭐ 1</span></button>'+
       '<button class="sg-card'+(bal<1||full?" off":"")+'" type="button" data-g="math"><span class="e">➕</span><b>Laskut</b><span class="c">⭐ 1</span></button>'+
-      '<button class="sg-card" type="button" data-g="album"><span class="e">📒</span><b>Tarrakirja</b><span class="c">'+Object.keys(A.album()).length+' / '+STICKERS.length+'</span></button>'+
+      '<button class="sg-card" type="button" data-g="album"><span class="e">📒</span><b>Tarrakirja</b><span class="c">'+Object.keys(ownedBase(A.album())).length+' / '+CAT.count+'</span></button>'+
     '</div><p class="sg-msg">'+(full?"Pelit on pelattu tältä päivältä. Huomenna taas! 🌙":bal<1?"Tähdet saat tekemällä aamun ja illan tehtävät.":"Yksi peli maksaa yhden tähden. Pelin lopuksi saat tarran!")+'</p>');
   b.querySelectorAll("[data-g]").forEach(function(c){c.onclick=function(){
     var g=c.dataset.g;
@@ -188,18 +205,46 @@ function math(){
   next();
 }
 
-/* ---------- reward: a sticker, new ones first ---------- */
-function reward(){
-  var have=A.album(),fresh=STICKERS.filter(function(s){return !have[s[0]];}),pool=fresh.length?fresh:STICKERS,s=pool[rnd(pool.length)];
-  A.addSticker(s[0]);
-  var b=shell("Sait tarran! 🎉",'<div class="sg-prize">'+s[0]+'</div><div style="font-size:34px;font-weight:700">'+esc(s[1][0].toUpperCase()+s[1].slice(1))+(fresh.length?" · uusi!":"")+'</div>'+
-    '<div class="sg-row"><button class="sg-big alt" type="button" data-a="album">📒 Liimaa tarrakirjaan</button><button class="sg-big" type="button" data-a="menu">⭐ Valmis</button></div>');
-  A.sFanfare();T(function(){A.say("Sait tarran: "+s[1]+"!"+(fresh.length?" Se on uusi!":""));},600);
-  b.querySelector('[data-a="album"]').onclick=function(){book(s[0]);};b.querySelector('[data-a="menu"]').onclick=function(){menu(A);};
+/* ---------- reward: a random sticker, or the child picks one of five (setting on the board) ---------- */
+function drawKey(have,avoid){
+  var own=ownedBase(have),fresh=CAT.all.filter(function(x){return !own[x.e]&&(avoid||[]).indexOf(x.e)<0;}),
+    pool=fresh.length?fresh:CAT.all.filter(function(x){return (avoid||[]).indexOf(x.e)<0;}),x=pool[rnd(pool.length)];
+  return x.e+(Math.random()<CAT.SHINY_CHANCE?"*":"");
 }
-function nameOf(e){var x=STICKERS.filter(function(s){return s[0]===e;})[0];return x?x[1]:"";}
+function reward(){
+  if(A.pickReward&&A.pickReward()){choose({title:"Valitse palkinto! 🎉",onPick:function(){}});return;}
+  var have=A.album(),k=drawKey(have),fresh=!ownedBase(have)[CAT.base(k)];
+  A.addSticker(k);reveal(k,fresh,"Sait tarran! 🎉");
+}
+function reveal(k,fresh,title){
+  var shiny=CAT.shiny(k),nm=CAT.name(k);
+  var b=shell(title,'<div class="sg-prize">'+stHtml(k)+'</div><div style="font-size:34px;font-weight:700">'+(shiny?"✨ Kiiltotarra: ":"")+esc(nm[0].toUpperCase()+nm.slice(1))+(fresh?" · uusi!":"")+'</div>'+
+    '<div class="sg-row"><button class="sg-big alt" type="button" data-a="album">📒 Liimaa tarrakirjaan</button><button class="sg-big" type="button" data-a="menu">'+(A.gamesOn===false?"✓ Valmis":"⭐ Valmis")+'</button></div>');
+  A.sFanfare();if(shiny)[1568,1760,2093].forEach(function(f,i){A.tone(f,.6+i*.1,.3,"sine",.1);});
+  T(function(){A.say((shiny?"Vau, kiiltotarra! ":"Sait tarran: ")+nm+"!"+(fresh?" Se on uusi!":""));},600);
+  b.querySelector('[data-a="album"]').onclick=function(){book(k);};
+  b.querySelector('[data-a="menu"]').onclick=function(){if(A.gamesOn===false)close();else menu(A);};
+}
+/* five stickers to choose from: mostly ones the child does not have yet, from different themes */
+function choose(o){
+  var have=A.album(),own=ownedBase(have),keys=[],themes=[];
+  var fresh=shuffle(CAT.all.filter(function(x){return !own[x.e];}));
+  fresh.forEach(function(x){if(keys.length<3&&themes.indexOf(x.t)<0){keys.push(x.e);themes.push(x.t);}});
+  while(keys.length<5){var k=CAT.base(drawKey(have,keys));if(keys.indexOf(k)<0)keys.push(k);else if(keys.length>=CAT.count)break;}
+  keys=shuffle(keys).map(function(k){return k+(Math.random()<CAT.SHINY_CHANCE?"*":"");});
+  var b=shell(o.title||"Valitse tarra!",(o.why?'<p class="sg-msg" style="font-size:24px;color:#2b2a4c">'+esc(o.why)+'</p>':"")+
+    '<div class="sg-choose">'+keys.map(function(k){return '<button type="button" class="sg-ch" data-k="'+esc(k)+'">'+stHtml(k)+(own[CAT.base(k)]?"":'<i>uusi</i>')+'</button>';}).join("")+'</div>'+
+    '<p class="sg-msg">Napauta sitä, jonka haluat.</p>',false);
+  T(function(){A.say((o.why?o.why+". ":"")+"Saat valita yhden tarran!");},300);
+  b.querySelectorAll(".sg-ch").forEach(function(x){x.onclick=function(){
+    var k=x.dataset.k,fresh=!own[CAT.base(k)];
+    b.querySelectorAll(".sg-ch").forEach(function(y){if(y!==x)y.classList.add("away");});x.classList.add("picked");
+    A.addSticker(k);if(o.onPick)o.onPick(k);A.tone(880,0,.12);
+    T(function(){reveal(k,fresh,"Valitsit tarran! 🎉");},700);
+  };});
+}
+function nameOf(e){return CAT.name(e);}
 
-/* ---------- sticker book: a landscape where stickers are dragged and left where the child wants ---------- */
 /* sticker book pages; the art stays inside the band that is visible on a wide landscape screen */
 function svgWrap(inner){return '<svg class="sg-bg" viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid slice" aria-hidden="true">'+inner+'</svg>';}
 var PAGES=[
@@ -237,19 +282,23 @@ function book(highlight){
   var have=A.album(),place=(A.albumPlace?A.albumPlace():[]).filter(function(p){return have[p.e];});
   var pk="sg.page."+A.child,page=0;try{page=+localStorage.getItem(pk)||0;}catch(e){}if(!(page>=0&&page<PAGES.length))page=0;
   var b=shell("Tarrakirja 📒",'<div class="sg-pages" id="sgPages"></div><div class="sg-scene" id="sgScene"></div><div class="sg-tray" id="sgTray"></div>'+
-    '<div class="sg-row"><button class="sg-big alt" type="button" id="sgAll">📋 Kokoelma '+Object.keys(have).length+' / '+STICKERS.length+'</button><button class="sg-big alt" type="button" id="sgBack">⬅ Takaisin</button></div>');
+    '<div class="sg-row"><button class="sg-big alt" type="button" id="sgAll">📋 Kokoelma '+Object.keys(ownedBase(have)).length+' / '+CAT.count+'</button><button class="sg-big alt" type="button" id="sgBack">⬅ Takaisin</button></div>');
   b.classList.add("sg-bookbody");
   var scene=b.querySelector("#sgScene"),tray=b.querySelector("#sgTray"),saveT=0;
-  function left(e){return (have[e]||0)-place.filter(function(p){return p.e===e;}).length;}
+  function left(k){return (have[k]||0)-place.filter(function(p){return p.e===k;}).length;}
   function save(){clearTimeout(saveT);saveT=setTimeout(function(){if(A.placeSave)A.placeSave(place);},700);}
+  /* tray order: newest gift first, then catalogue order, shiny ones next to their plain twin */
+  function trayKeys(){var ks=[];CAT.all.forEach(function(x){[x.e,x.e+"*"].forEach(function(k){if(have[k])ks.push(k);});});
+    Object.keys(have).forEach(function(k){if(ks.indexOf(k)<0&&have[k])ks.push(k);});
+    if(highlight&&ks.indexOf(highlight)>0){ks.splice(ks.indexOf(highlight),1);ks.unshift(highlight);}return ks;}
   function draw(){
     scene.innerHTML=PAGES[page].svg;
     b.querySelector("#sgPages").innerHTML=PAGES.map(function(pg,i){var n=place.filter(function(p){return (p.p||0)===i;}).length;
       return '<button type="button" class="sg-pg" data-pg="'+i+'" aria-pressed="'+(i===page)+'">'+pg.e+' '+pg.n+(n?'<i>'+n+'</i>':"")+'</button>';}).join("");
     b.querySelectorAll("[data-pg]").forEach(function(x){x.onclick=function(){page=+x.dataset.pg;try{localStorage.setItem(pk,String(page));}catch(e){}A.tone(660,0,.1);A.say(PAGES[page].n);draw();};});
-    place.forEach(function(p,i){if((p.p||0)!==page)return;var el=document.createElement("span");el.className="sg-pl";el.textContent=p.e;el.style.left=p.x+"%";el.style.top=p.y+"%";el.dataset.i=i;scene.appendChild(el);drag(el,p.e,i);});
-    var keys=STICKERS.map(function(s){return s[0];}).filter(function(e){return have[e];});
-    tray.innerHTML=keys.length?keys.map(function(e){var n=left(e);return '<span class="sg-tr'+(n?"":" used")+(e===highlight&&n?" new":"")+'" data-e="'+e+'">'+e+(n>1?'<i>'+n+'</i>':"")+'</span>';}).join(""):'<span class="sg-msg">Tarrat saat peleistä.</span>';
+    place.forEach(function(p,i){if((p.p||0)!==page)return;var el=document.createElement("span");el.className="sg-pl"+(CAT.shiny(p.e)?" shiny":"");el.textContent=CAT.base(p.e);el.style.left=p.x+"%";el.style.top=p.y+"%";el.dataset.i=i;scene.appendChild(el);drag(el,p.e,i);});
+    var keys=trayKeys();
+    tray.innerHTML=keys.length?keys.map(function(k){var n=left(k);return '<span class="sg-tr'+(CAT.shiny(k)?" shiny":"")+(n?"":" used")+(k===highlight&&n?" new":"")+'" data-e="'+esc(k)+'">'+CAT.base(k)+(n>1?'<i>'+n+'</i>':"")+'</span>';}).join(""):'<span class="sg-msg">Tarrat saat '+(A.gamesOn===false?"aikuisilta.":"peleistä.")+'</span>';
     tray.querySelectorAll(".sg-tr").forEach(function(el){if(left(el.dataset.e))drag(el,el.dataset.e,-1);else el.onclick=function(){A.say(nameOf(el.dataset.e)+" on jo kirjassa.");};});
   }
   /* press and move: a copy follows the finger; let go on the landscape to stick it, back on the tray to take it off */
@@ -258,12 +307,12 @@ function book(highlight){
       ev.preventDefault();var sx=ev.clientX,sy=ev.clientY,moved=false,ghost=null;
       function mv(m){
         if(!moved&&Math.abs(m.clientX-sx)+Math.abs(m.clientY-sy)<8)return;
-        if(!moved){moved=true;ghost=document.createElement("span");ghost.className="sg-ghost";ghost.textContent=e;document.body.appendChild(ghost);if(idx>=0)el.style.opacity=".25";A.tone(700,0,.08);}
+        if(!moved){moved=true;ghost=document.createElement("span");ghost.className="sg-ghost"+(CAT.shiny(e)?" shiny":"");ghost.textContent=CAT.base(e);document.body.appendChild(ghost);if(idx>=0)el.style.opacity=".25";A.tone(700,0,.08);}
         ghost.style.left=m.clientX+"px";ghost.style.top=m.clientY+"px";
       }
       function up(u){
         document.removeEventListener("pointermove",mv);document.removeEventListener("pointerup",up);document.removeEventListener("pointercancel",up);
-        if(!moved){A.sOn();A.say(nameOf(e));el.classList.remove("wig");void el.offsetWidth;el.classList.add("wig");return;}
+        if(!moved){A.sOn();A.say((CAT.shiny(e)?"Kiiltotarra: ":"")+nameOf(e));el.classList.remove("wig");void el.offsetWidth;el.classList.add("wig");return;}
         ghost.remove();var r=scene.getBoundingClientRect(),inside=u.clientX>r.left&&u.clientX<r.right&&u.clientY>r.top&&u.clientY<r.bottom;
         var x=Math.round((u.clientX-r.left)/r.width*1000)/10,y=Math.round((u.clientY-r.top)/r.height*1000)/10;
         if(inside){x=Math.max(4,Math.min(96,x));y=Math.max(6,Math.min(94,y));if(idx>=0){place[idx].x=x;place[idx].y=y;}else place.push({e:e,x:x,y:y,p:page});A.tone(880,0,.12);A.tone(1180,.08,.15);}
@@ -274,21 +323,26 @@ function book(highlight){
     });
   }
   draw();
-  b.querySelector("#sgAll").onclick=album;b.querySelector("#sgBack").onclick=function(){clearTimeout(saveT);if(A.placeSave)A.placeSave(place);if(A.gamesOn===false)close();else menu(A);};
-  var free=STICKERS.filter(function(s){return have[s[0]]&&left(s[0]);}).length;
-  A.say(highlight&&left(highlight)?"Vedä "+nameOf(highlight)+" sormella maisemaan!":free?"Vedä tarroja sormella maisemaan.":Object.keys(have).length?"Tässä on sinun tarrakirjasi.":"Tarrat saat peleistä.");
+  b.querySelector("#sgAll").onclick=function(){clearTimeout(saveT);if(A.placeSave)A.placeSave(place);album();};
+  b.querySelector("#sgBack").onclick=function(){clearTimeout(saveT);if(A.placeSave)A.placeSave(place);if(A.gamesOn===false)close();else menu(A);};
+  var free=trayKeys().filter(function(k){return left(k);}).length;
+  A.say(highlight&&left(highlight)?"Vedä "+nameOf(highlight)+" sormella maisemaan!":free?"Vedä tarroja sormella maisemaan.":Object.keys(have).length?"Tässä on sinun tarrakirjasi.":"Tässä on sinun tarrakirjasi.");
 }
+/* collection by theme; a full theme earns a medal */
 function album(){
-  var have=A.album(),n=Object.keys(have).length;
-  var b=shell("Kokoelma "+n+" / "+STICKERS.length,'<div class="sg-album">'+STICKERS.map(function(s){var c=have[s[0]]||0;
-    return c?'<button class="sg-st" type="button" data-s="'+esc(s[1])+'">'+s[0]+(c>1?'<i>'+c+'</i>':"")+'</button>':'<button class="sg-st no" type="button" data-q="1">?</button>';}).join("")+'</div>'+
-    '<button class="sg-big alt" type="button" id="sgBack">⬅ Tarrakirjaan</button>');
+  var have=A.album(),own=ownedBase(have),n=Object.keys(own).length,medals=0;
+  var html=CAT.themes.map(function(t){var got=t.list.filter(function(x){return own[x[0]];}).length,full=got===t.list.length;if(full)medals++;
+    return '<div class="sg-th"><h3>'+t.e+' '+esc(t.n)+' <span>'+got+' / '+t.list.length+'</span>'+(full?' <b>🏅</b>':"")+'</h3><div class="sg-album">'+t.list.map(function(x){
+      var c=(have[x[0]]||0)+(have[x[0]+"*"]||0),sh=have[x[0]+"*"];
+      return c?'<button class="sg-st'+(sh?" shiny":"")+'" type="button" data-s="'+esc((sh?"Kiiltotarra: ":"")+x[1])+'">'+x[0]+(c>1?'<i>'+c+'</i>':"")+'</button>':'<button class="sg-st no" type="button" data-q="1">?</button>';}).join("")+'</div></div>';}).join("");
+  var b=shell("Kokoelma "+n+" / "+CAT.count+(medals?" · 🏅 "+medals:""),html+'<button class="sg-big alt" type="button" id="sgBack">⬅ Tarrakirjaan</button>');
   b.style.justifyContent="flex-start";
   b.querySelectorAll("[data-s]").forEach(function(x){x.onclick=function(){A.sOn();A.say(x.dataset.s);};});
   b.querySelectorAll("[data-q]").forEach(function(x){x.onclick=function(){A.say("Tämä tarra puuttuu vielä.");};});
+  b.querySelectorAll(".sg-th h3").forEach(function(h){h.onclick=function(){A.say(h.textContent.replace("🏅","").replace(/(\d+) \/ (\d+)/,"$1 tarraa $2:sta")+(h.querySelector("b")?". Sait mitalin!":""));};});
   b.querySelector("#sgBack").onclick=function(){book();};
-  A.say(n?"Sinulla on "+n+(n===1?" tarra.":" tarraa."):"Tarrat saat peleistä.");
+  A.say(n?"Sinulla on "+n+(n===1?" tarra":" eri tarraa")+(medals?" ja "+medals+(medals===1?" mitali.":" mitalia."):"."):"Tarrat saat "+(A.gamesOn===false?"aikuisilta.":"peleistä."));
 }
 
-window.StarGames={menu:menu,book:function(api,hl){A=api;book(hl);},nameOf:nameOf,stickers:STICKERS.length};
+window.StarGames={menu:menu,book:function(api,hl){A=api;book(hl);},choose:function(api,o){A=api;choose(o||{});},nameOf:nameOf,stickers:CAT.count};
 })();

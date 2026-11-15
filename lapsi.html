@@ -167,6 +167,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div class="party" id="party" aria-hidden="true"></div>
 <div class="note" id="note" hidden></div>
 <script src="config.js"></script>
+<script src="tarrat.js"></script>
 <script>
 (function(){
 "use strict";
@@ -386,6 +387,7 @@ function bumpPill(){$("#starN").textContent=stars();var s=$("#stars");s.classLis
 function gameApi(){var c=child();return {child:c,gamesOn:gamesOn(),say:say,sOn:sOn,sOff:sOff,sFanfare:sFanfare,tone:tone,
   balance:function(){return balance(c);},plays:function(){return playsToday(c);},max:function(){var m=cfg().max;return m==null?3:+m;},
   spend:function(g){if(balance(c)<1)return false;save({id:newId(),list:KM_LIST,text:"Peli",done:"",ts:Date.now(),data:JSON.stringify({kind:"star",who:c,n:-1,date:ymd(new Date()),game:g,seen:true})});return true;},
+  pickReward:function(){return !!cfg().pickGame;},
   trickLevel:function(){var t=cfg().tricks;return t==null?2:+t;},
   albumPlace:function(){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];return x&&Array.isArray(x.d.place)?x.d.place:[];},
   placeSave:function(list){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];if(!x)return;x.d.place=list.slice(0,200);x.row.data=JSON.stringify(x.d);save(x.row);},
@@ -396,7 +398,7 @@ function gameApi(){var c=child();return {child:c,gamesOn:gamesOn(),say:say,sOn:s
   changed:function(){$("#starN").textContent=stars();}};}
 function loadGames(){
   if(window.StarGames||S.gamesLoading)return;S.gamesLoading=true;
-  var sc=document.createElement("script");sc.src="tahtipelit.js?v="+Math.floor(Date.now()/36e5);sc.onerror=function(){S.gamesLoading=false;};document.head.appendChild(sc);
+  var sc=document.createElement("script");sc.src="tahtipelit.js?v="+Math.floor(Date.now()/36e5);sc.onerror=function(){S.gamesLoading=false;};sc.onload=function(){if(child())showGifts();};document.head.appendChild(sc);
 }
 $("#bookBtn").onclick=function(){if(window.StarGames&&child())StarGames.book(gameApi());};
 $("#stars").onclick=function(){
@@ -408,6 +410,14 @@ $("#stars").onclick=function(){
 function showGifts(){
   if(!bookOn()||S.gift||$(".sg"))return;var c=child();
   var sg=rows(KM_LIST).filter(function(x){return x.d.kind==="sgift"&&x.d.who===c;})[0];
+  if(sg&&window.StarGames&&sg.d.choice){
+    /* the child picks one of five; the gift stays waiting until a sticker is chosen */
+    S.gift=true;var o3=document.createElement("div");o3.className="gift";
+    o3.innerHTML='<div><span class="e">🎁</span><b>Saat valita tarran!</b>'+(sg.d.why?'<span>'+esc(sg.d.why)+'</span>':"")+'<span style="font-size:18px;margin-top:10px">Napauta ja valitse</span></div>';
+    document.body.appendChild(o3);sFanfare();T0(function(){say("Saat valita tarran! "+cleanText(sg.d.why||""));},500);
+    o3.onclick=function(){o3.remove();S.gift=false;StarGames.choose(gameApi(),{title:"Valitse tarra! 🎁",why:sg.d.why,onPick:function(){
+      S.items=S.items.filter(function(i){return i.id!==sg.row.id;});queue({op:"delete",table:"items",id:sg.row.id});}});};
+    return;}
   if(sg&&window.StarGames){S.gift=true;var o2=document.createElement("div");o2.className="gift";var nm=StarGames.nameOf(sg.d.e);
     o2.innerHTML='<div><span class="e">'+esc(sg.d.e)+'</span><b>Sait tarran!</b>'+(sg.d.why?'<span>'+esc(sg.d.why)+'</span>':"")+'<span style="font-size:18px;margin-top:10px">Napauta, niin pääset liimaamaan sen 📒</span></div>';
     document.body.appendChild(o2);sFanfare();T0(function(){say("Sait tarran: "+nm+"! "+cleanText(sg.d.why||""));},500);

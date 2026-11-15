@@ -176,7 +176,9 @@ function $(s,r){return (r||document).querySelector(s);}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function lsGet(k,d){try{var v=localStorage.getItem(k);return v==null?d:v;}catch(e){return d;}}
 function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
-function pjson(s){try{var o=typeof s==="string"?JSON.parse(s||"{}"):s;return o&&typeof o==="object"?o:{};}catch(e){return {};}}
+/* unreadable data is marked, so it is repaired or left alone, never overwritten with an empty object */
+function pjson(s){try{var o=typeof s==="string"?JSON.parse(s||"{}"):s;return o&&typeof o==="object"?o:{};}catch(e){return {__bad:true,__raw:String(s)};}}
+var DATA_MAX=3900;
 function pad(n){return (n<10?"0":"")+n;}
 function ymd(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());}
 function pd(k){var p=String(k).split("-");return new Date(+p[0],p[1]-1,+p[2]);}
@@ -220,7 +222,7 @@ function ready(){return /^https:\/\/script\.google\.com\//.test(BACKEND)&&!!key(
 function post(body){body.key=key();return fetch(BACKEND,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)})
   .then(function(r){return r.text();}).then(function(t){var j;try{j=JSON.parse(t);}catch(e){throw new Error("html");}if(!j||j.ok===false)throw new Error(j&&j.error||"virhe");return j;});}
 function apply(res){
-  S.items=res.items||[];S.events=res.events||[];S.gcal=Array.isArray(res.gcal)?res.gcal:[];S.settings=res.settings||{};S.lists=res.lists||[];
+  S.items=res.items||[];repairAlbums();S.events=res.events||[];S.gcal=Array.isArray(res.gcal)?res.gcal:[];S.settings=res.settings||{};S.lists=res.lists||[];
   try{localStorage.setItem("lapsi.cache",JSON.stringify({t:Date.now(),d:{items:S.items,events:S.events,gcal:S.gcal,settings:S.settings,lists:S.lists}}));}catch(e){}
   S.data=true;
 }
@@ -231,6 +233,8 @@ function load(){
 }
 /* changes show at once and are sent one after another */
 function save(row){
+  /* the sheet cuts longer values, which would break the data; refuse instead */
+  if(String(row.data||"").length>DATA_MAX||/"__bad":true/.test(String(row.data||""))){note("Tietoa on liikaa tallennettavaksi. Kerro aikuiselle.");return false;}
   var i=S.items.findIndex(function(x){return x.id===row.id;});if(i<0)S.items.push(row);
   if(!(S.lists||[]).some(function(l){return l.id===row.list;})){
     var l=row.list===KM_LIST?{id:KM_LIST,name:"Lapsi-tila",ts:Date.now(),type:"kmode",data:"{}"}:{id:KID_LIST,name:"Lapsille mukaan",ts:Date.now(),type:"kids",data:"{}"};
@@ -323,7 +327,7 @@ function render(){
   if(!c){
     var ks=kids();
     grid.innerHTML='<div class="msg" style="grid-column:1/-1"><div class="box"><h2>Kuka sinä olet?</h2>'+(ks.length?'<div class="who">'+ks.map(function(n){var m=family().filter(function(x){return x.name===n;})[0];
-      return '<button type="button" data-who="'+esc(n)+'" style="background:'+esc(m&&m.color||"#fff")+'">'+esc(n)+'</button>';}).join("")+'</div>':'<p>Lisää ilmoitustaulun asetuksiin perheenjäsen ja merkitse hänet lapseksi.</p><a class="big" href="index.html">Avaa ilmoitustaulu</a>')+'</div></div>';
+      return '<button type="button" data-who="'+esc(n)+'" style="background:'+({n1:"#f6e39a",n2:"#bfe0d2",n3:"#f3c4b8",n4:"#c9d3f2",n5:"#e3cbec",n6:"#d9e6a8"}[m&&m.color]||"#fff")+'">'+esc(n)+'</button>';}).join("")+'</div>':'<p>Lisää ilmoitustaulun asetuksiin perheenjäsen ja merkitse hänet lapseksi.</p><a class="big" href="index.html">Avaa ilmoitustaulu</a>')+'</div></div>';
     grid.querySelectorAll("[data-who]").forEach(function(b){b.onclick=function(){S.child=b.dataset.who;lsSet("lapsi.child",S.child);say("Hei "+S.child+"!");render();};});
     return;
   }
@@ -375,6 +379,49 @@ function drawRoutine(){
     if(on&&cnt===all.length)celebrate(r);
   };});
 }
+/* ---------- sticker book storage ----------
+   The collection is one row per child (kind "album", s = {sticker: count}).
+   Stuck stickers are one row per child and page (kind "place", l = [[sticker, x, y], …]), so no row grows too long. */
+var PAGE_MAX=60;
+function placeRows(c){return rows(KM_LIST).filter(function(x){return x.d.kind==="place"&&x.d.who===c;});}
+function placesOf(c){var out=[];placeRows(c).sort(function(a,b){return (a.d.p||0)-(b.d.p||0);}).forEach(function(x){(x.d.l||[]).forEach(function(q){out.push({e:q[0],x:q[1],y:q[2],p:x.d.p||0});});});return out;}
+function savePlaces(c,list){
+  var pages={};list.forEach(function(q){var p=q.p||0;(pages[p]=pages[p]||[]);if(pages[p].length<PAGE_MAX)pages[p].push([q.e,q.x,q.y]);});
+  var old={};placeRows(c).forEach(function(x){old[x.d.p||0]=x;});
+  Object.keys(pages).concat(Object.keys(old)).forEach(function(p){
+    if(pages[p]===undefined&&!old[p])return;var l=pages[p]||[],x=old[p];
+    if(x&&JSON.stringify(x.d.l||[])===JSON.stringify(l))return;
+    var row=x?x.row:{id:"pl-"+p+"-"+newId(),list:KM_LIST,text:"Tarrasivu",done:"",ts:Date.now(),data:"{}"};
+    row.data=JSON.stringify({kind:"place",who:c,p:+p,l:l});save(row);old[p]={row:row,d:{l:l}};
+  });
+}
+/* Repairs sticker books saved by the earlier version: a too long row cut by the sheet is rebuilt from the
+   readable part, stuck stickers move to their own rows, and duplicate books of one child are merged. */
+function repairAlbums(){
+  var fix=[];
+  S.items.forEach(function(r){
+    if(r.list!==KM_LIST)return;var d=pjson(r.data);
+    if(d.__bad&&/"kind"\s*:\s*"album"/.test(d.__raw)){
+      var who=(d.__raw.match(/"who"\s*:\s*"((?:[^"\\]|\\.)*)"/)||[])[1],seg=(d.__raw.match(/"s"\s*:\s*\{([^}]*)/)||[])[1]||"",st={},m,re=/"((?:[^"\\]|\\.)+)"\s*:\s*(\d+)/g;
+      while((m=re.exec(seg)))st[m[1]]=+m[2];
+      if(who){r.data=JSON.stringify({kind:"album",who:who,s:st});fix.push(r);}
+    }
+  });
+  var byWho={};
+  S.items.slice().forEach(function(r){
+    if(r.list!==KM_LIST)return;var d=pjson(r.data);if(d.kind!=="album")return;
+    if(Array.isArray(d.place)&&d.place.length){var cur=placesOf(d.who);savePlaces(d.who,cur.concat(d.place));}
+    if(d.place){delete d.place;r.data=JSON.stringify(d);if(fix.indexOf(r)<0)fix.push(r);}
+    var first=byWho[d.who];
+    if(!first){byWho[d.who]=r;return;}
+    var fd=pjson(first.data);fd.s=fd.s||{};Object.keys(d.s||{}).forEach(function(k){fd.s[k]=(fd.s[k]||0)+d.s[k];});first.data=JSON.stringify(fd);
+    if(fix.indexOf(first)<0)fix.push(first);
+    S.items=S.items.filter(function(i){return i!==r;});fix=fix.filter(function(i){return i!==r;});
+    if(ready())queue({op:"delete",table:"items",id:r.id});
+  });
+  if(fix.length&&ready())setTimeout(function(){fix.forEach(function(r){save(r);});},0);
+}
+
 /* ---------- star games: switched on from the board (Lapsi-tila → Tähdet); the games are in tahtipelit.js ----------
    With games on, each child has own stars in the family sheet: rows of kind "star" (+1 for a routine or from a parent, −1 for a game). */
 function cfg(){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="cfg";})[0];return x?x.d:{};}
@@ -389,8 +436,9 @@ function gameApi(){var c=child();return {child:c,gamesOn:gamesOn(),say:say,sOn:s
   spend:function(g){if(balance(c)<1)return false;save({id:newId(),list:KM_LIST,text:"Peli",done:"",ts:Date.now(),data:JSON.stringify({kind:"star",who:c,n:-1,date:ymd(new Date()),game:g,seen:true})});return true;},
   pickReward:function(){return !!cfg().pickGame;},
   trickLevel:function(){var t=cfg().tricks;return t==null?2:+t;},
-  albumPlace:function(){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];return x&&Array.isArray(x.d.place)?x.d.place:[];},
-  placeSave:function(list){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];if(!x)return;x.d.place=list.slice(0,200);x.row.data=JSON.stringify(x.d);save(x.row);},
+  pageMax:PAGE_MAX,
+  albumPlace:function(){return placesOf(c);},
+  placeSave:function(list){savePlaces(c,list);},
   album:function(){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];return x&&x.d.s||{};},
   addSticker:function(e){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="album"&&y.d.who===c;})[0];
     var row=x?x.row:{id:"alb-"+newId(),list:KM_LIST,text:"Tarrat",done:"",ts:Date.now(),data:"{}"},d=x?x.d:{kind:"album",who:c,s:{}};
@@ -531,6 +579,13 @@ function menu(){
   };});
 }
 
+/* An older lists app registered its offline helper for the whole folder, and it stored a copy of every
+   page load and update check. Remove that registration and its cache; the lists app now uses a narrow one. */
+(function(){try{
+  if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations)navigator.serviceWorker.getRegistrations().then(function(rs){
+    rs.forEach(function(r){if(/\/$/.test(r.scope))r.unregister();});}).catch(function(){});
+  if(window.caches&&caches.delete)caches.delete("listat-v1").catch(function(){});
+}catch(e){}})();
 /* self-update: reload when a new version is on GitHub and nobody has touched the page for two minutes */
 var UPD={base:null},lastTouch=Date.now();
 document.addEventListener("pointerdown",function(){lastTouch=Date.now();},true);

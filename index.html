@@ -508,7 +508,10 @@ function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
 /* ---------- helpers ---------- */
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function member(n){var f=S.settings.family||[];for(var i=0;i<f.length;i++)if(f[i].name===n)return f[i];return null;}
-function colorOf(n){var m=member(n);return m?"var(--"+m.color+")":"var(--n1)";}
+/* colours and links come from the shared sheet, so only known values are put into the page */
+function colVar(c){return "var(--"+(COLORS.indexOf(c)>=0?c:"n1")+")";}
+function safeUrl(u){u=String(u||"").trim();return /^https?:\/\/[^\s"'<>]+$/i.test(u)?u:"";}
+function colorOf(n){var m=member(n);return m?colVar(m.color):"var(--n1)";}
 function toast(msg,ms){var t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(function(){t.hidden=true;},ms||2800);}
 
 /* ---------- backend ---------- */
@@ -586,6 +589,7 @@ function kidNames(){var f=S.settings.family||[],k=f.filter(function(x){return x.
 function kidItems(){return (S.items||[]).filter(function(i){return i.list===KID_LIST;}).map(function(i){return {row:i,d:pjson(i.data)};});}
 function kidOn(it,k){var d=it.d;if(d.when==="date")return d.date===k;if(d.when==="weekly")return (d.days||[]).indexOf(dow(pd(k)))>=0&&!(d.skip&&d.skip[k]);return false;}
 function kidSave(it){
+  if(it.d.__bad)return;
   it.row.data=JSON.stringify(it.d);
   if(!(S.lists||[]).some(function(l){return l.id===KID_LIST;})){var l={id:KID_LIST,name:"Lapsille mukaan",ts:Date.now(),type:"kids",data:"{}"};S.lists.push(l);sendQ({op:"upsert",table:"lists",row:l});}
   if(S.items.indexOf(it.row)<0)S.items.push(it.row);
@@ -736,7 +740,7 @@ function kmSteps(r){return kmItems().filter(function(x){return x.d.kind==="step"
 function kmFor(x,kid){var w=x.d.who;return !kid||!w||!w.length||w.indexOf(kid)>=0;}
 function kmWhoTxt(x){var w=x.d.who;return w&&w.length?w.join(", "):"Kaikille";}
 function kmEnsureList(){if(!(S.lists||[]).some(function(l){return l.id===KM_LIST;})){var l={id:KM_LIST,name:"Lapsi-tila",ts:Date.now(),type:"kmode",data:"{}"};S.lists.push(l);sendQ({op:"upsert",table:"lists",row:l});}}
-function kmSave(it){it.row.data=JSON.stringify(it.d);kmEnsureList();if(S.items.indexOf(it.row)<0)S.items.push(it.row);sendQ({op:"upsert",table:"items",row:it.row});}
+function kmSave(it){if(it.d.__bad){toast("Riviä ei voi tallentaa: tieto on vioittunut.");return;}var js=JSON.stringify(it.d);if(js.length>3900){toast("Tietoa on liikaa tallennettavaksi.",6000);return;}it.row.data=js;kmEnsureList();if(S.items.indexOf(it.row)<0)S.items.push(it.row);sendQ({op:"upsert",table:"items",row:it.row});}
 function kmDel(id){S.items=S.items.filter(function(i){return i.id!==id;});sendQ({op:"delete",table:"items",id:id});}
 /* Default routines get fixed ids, so the board and the kid page can both create them without duplicates. */
 function kmDefaults(){
@@ -749,6 +753,7 @@ var KM_WHY=["Nopea aamu!","Reipas ilta!","Autoit muita","Olit rohkea","Siivosit 
 function kmCfg(){var x=kmItems().filter(function(y){return y.d.kind==="cfg";})[0];return x||{row:{id:"km-cfg",list:KM_LIST,text:"Asetukset",done:"",ts:Date.now(),data:"{}"},d:{kind:"cfg"}};}
 function kmStars(c){return kmItems().filter(function(x){return x.d.kind==="star"&&(!c||x.d.who===c);});}
 function kmBal(c){return Math.max(0,kmStars(c).reduce(function(a,x){return a+(+x.d.n||0);},0));}
+function kmPlaces(c){return kmItems().filter(function(x){return x.d.kind==="place"&&x.d.who===c;});}
 function kmAlbum(c){return kmItems().filter(function(x){return x.d.kind==="album"&&x.d.who===c;})[0];}
 var KM_STICKERS=[["🦊","Kettu"],["🐻","Karhu"],["🐰","Pupu"],["🦉","Pöllö"],["🐸","Sammakko"],["🦔","Siili"],["🐿️","Orava"],["🦌","Peura"],["🐟","Kala"],["🐞","Leppäkerttu"],
   ["🦋","Perhonen"],["🐝","Mehiläinen"],["🐧","Pingviini"],["🦁","Leijona"],["🐘","Norsu"],["🦒","Kirahvi"],["🐢","Kilpikonna"],["🐬","Delfiini"],["🦄","Yksisarvinen"],["🐉","Lohikäärme"],
@@ -775,7 +780,7 @@ function kmStarHtml(kidsAll){
   if(!kidsAll.length)return h+'<p class="hint">Merkitse asetuksissa perheenjäsen lapseksi, niin voit antaa hänelle '+(on?"tähtiä ja ":"")+'tarroja.</p>';
   h+='<span class="flabel">Anna '+(on?"tähtiä tai ":"")+'tarra</span><input id="sgWhy" maxlength="40" placeholder="Syy, jonka lapsi kuulee (vapaaehtoinen)" value="'+esc(KM_WHYV)+'"><div class="kmsug">'+KM_WHY.map(function(w){return '<button type="button" data-why="'+esc(w)+'">'+esc(w)+'</button>';}).join("")+'</div>';
   h+=kidsAll.map(function(n){
-    var al=kmAlbum(n),have=kmOwned(al&&al.d.s),cnt=Object.keys(have).length,pl=al?(al.d.place||[]).length:0,pend=kmGifts(n).length;
+    var al=kmAlbum(n),have=kmOwned(al&&al.d.s),cnt=Object.keys(have).length,pl=kmPlaces(n).reduce(function(a,x){return a+(x.d.l||[]).length;},0)+(al?(al.d.place||[]).length:0),pend=kmGifts(n).length;
     var r='<div class="kmrow"><span class="kn" style="background:'+colorOf(n)+';padding:4px 12px;border-radius:999px;font-weight:700;color:var(--note-ink)">'+esc(n)+'</span>'+
       (on?'<span class="grow" style="font-size:20px;font-weight:700">⭐ '+kmBal(n)+'</span><button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="-1" aria-label="Vähennä tähti">−1</button><button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="1">+1 ⭐</button><button class="btn sm primary" type="button" data-give="'+esc(n)+'" data-n="2">+2 ⭐</button>':'<span class="grow"></span>')+
       '<button class="btn sm'+(on?"":" primary")+'" type="button" data-pick="'+esc(n)+'" aria-expanded="'+(KM_PICK===n)+'">🎁 Tarra</button></div>';
@@ -784,11 +789,11 @@ function kmStarHtml(kidsAll){
         t.list.map(function(x){return '<button type="button" data-st="'+x[0]+'" data-for="'+esc(n)+'" title="'+esc(x[1])+'">'+x[0]+(have[x[0]]?'<i>'+have[x[0]]+'</i>':"")+'</button>';}).join("")+'</div>';}).join("")+
       '<p class="hint" style="margin:0 0 6px">Napauta tarraa, niin se lähtee lapselle. Numero kertoo, montako lapsella jo on.</p>';
     r+='<div class="kmrow" style="border:none;padding-top:0"><span class="hint" style="flex:1">📒 '+cnt+' / '+kmCat().count+' tarraa, '+pl+' liimattu'+(pend?", "+pend+" odottaa avaamista":"")+'</span>'+
-      (pl?'<button class="btn sm" type="button" data-alclear="'+esc(n)+'">Tyhjennä sivut</button>':"")+(al||pend?'<button class="btn sm danger" style="margin-right:0" type="button" data-alreset="'+esc(n)+'">Nollaa tarrakirja</button>':"")+'</div>';
+      (pl?'<button class="btn sm" type="button" data-alclear="'+esc(n)+'">Tyhjennä sivut</button>':"")+(al||pend||pl?'<button class="btn sm danger" style="margin-right:0" type="button" data-alreset="'+esc(n)+'">Nollaa tarrakirja</button>':"")+'</div>';
     return r;}).join("");
   var hist=(on?kmStars().filter(function(x){return x.row.id.indexOf("sb-")!==0;}):[]).concat(kmGifts()).sort(function(a,b){return (+b.row.ts||0)-(+a.row.ts||0);}).slice(0,8);
   if(hist.length){h+='<span class="flabel">Viimeisimmät</span>'+hist.map(function(x){var d=x.d,dt=pd(d.date||ymd(new Date()));
-    var what=d.kind==="sgift"?"🎁 "+(d.choice?"valinta viidestä":d.e)+" "+esc(d.why||"")+' <span class="hint">· näytetään lapselle</span>':
+    var what=d.kind==="sgift"?"🎁 "+(d.choice?"valinta viidestä":esc(d.e))+" "+esc(d.why||"")+' <span class="hint">· näytetään lapselle</span>':
       (d.n>0?"+":"−")+Math.abs(d.n)+' ⭐ '+esc(d.game?(d.game==="math"?"Laskupeli":"Tee temppu"):d.why||"")+(d.by==="parent"&&d.n>0&&!d.seen?' <span class="hint">· näytetään lapselle</span>':"");
     return '<div class="kall"><span class="hint" style="width:48px">'+dt.getDate()+'.'+(dt.getMonth()+1)+'.</span><span class="kn" style="background:'+colorOf(d.who)+'">'+esc(d.who)+'</span>'+
       '<span class="grow">'+what+'</span><button class="ked" type="button" data-sdel="'+esc(x.row.id)+'" aria-label="Poista">🗑</button></div>';}).join("");}
@@ -815,8 +820,8 @@ function kmStarBind(s,kidsAll,redraw){
   s.querySelectorAll("[data-choice]").forEach(function(b){b.onclick=function(){var w=b.dataset.choice;
     kmSave({row:{id:newId(),list:KM_LIST,text:"Tarra",done:"",ts:Date.now(),data:"{}"},d:{kind:"sgift",who:w,choice:true,e:"🎁",why:why?why.value.trim():"",date:ymd(new Date())}});
     KM_PICK="";KM_WHYV="";toast(w+" saa valita tarran");redraw();};});
-  s.querySelectorAll("[data-alclear]").forEach(function(b){confirmBtn(b,function(){var al=kmAlbum(b.dataset.alclear);if(!al)return;al.d.place=[];kmSave(al);toast("Tarrat irrotettu sivuilta");redraw();});});
-  s.querySelectorAll("[data-alreset]").forEach(function(b){confirmBtn(b,function(){var w=b.dataset.alreset,al=kmAlbum(w);if(al)kmDel(al.row.id);kmGifts(w).forEach(function(x){kmDel(x.row.id);});toast("Tarrakirja nollattu");redraw();});});
+  s.querySelectorAll("[data-alclear]").forEach(function(b){confirmBtn(b,function(){var w=b.dataset.alclear,al=kmAlbum(w);kmPlaces(w).forEach(function(x){kmDel(x.row.id);});if(al&&al.d.place){delete al.d.place;kmSave(al);}toast("Tarrat irrotettu sivuilta");redraw();});});
+  s.querySelectorAll("[data-alreset]").forEach(function(b){confirmBtn(b,function(){var w=b.dataset.alreset;kmItems().forEach(function(x){if(x.d.who===w&&(x.d.kind==="album"||x.d.kind==="place"||x.d.kind==="sgift"))kmDel(x.row.id);});toast("Tarrakirja nollattu");redraw();});});
   s.querySelectorAll("[data-sdel]").forEach(function(b){confirmBtn(b,function(){kmDel(b.dataset.sdel);redraw();});});
 }
 function kidModeSheet(tab){
@@ -1027,7 +1032,7 @@ function renderDay(){
 }
 function goDay(k){var p=k.split("-"),d=new Date(+p[0],p[1]-1,+p[2]),t=new Date();t.setHours(0,0,0,0);S.dayOffset=Math.round((d-t)/864e5);S.view="day";lsSet("calView","day");renderWeek();}
 /* Household chores (from the lists app) that are due today or late */
-function pjson(s){try{var o=JSON.parse(s||"{}");return o&&typeof o==="object"?o:{};}catch(e){return {};}}
+function pjson(s){try{var o=JSON.parse(s||"{}");return o&&typeof o==="object"?o:{};}catch(e){return {__bad:true};}}
 function dueChores(){
   var out=[],fam=(S.settings.family||[]).map(function(f){return f.name;});
   var ids={};(S.lists||[]).forEach(function(l){if(l.type==="chores")ids[l.id]=1;});
@@ -1538,7 +1543,7 @@ function glide(marker,to){
 function renderFoot(){
   var L=S.settings.links||[],f=$("#foot");
   var ic='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
-  var h=L.length?'<span class="lbl">Pikalinkit</span>'+L.map(function(l){return '<a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+ic+esc(l.label)+'</a>';}).join(""):"";
+  var h=L.length?'<span class="lbl">Pikalinkit</span>'+L.filter(function(l){return safeUrl(l.url);}).map(function(l){return '<a href="'+esc(safeUrl(l.url))+'" target="_blank" rel="noopener">'+ic+esc(l.label)+'</a>';}).join(""):"";
   var st=!configured()?'<span class="status bad">Taustapalvelu puuttuu</span>':(S.lastErr?'<span class="status bad">'+esc(S.lastErr)+'</span>':S.gcalError?'<span class="status bad">Google-kalenteria ei saatu luettua: '+esc(S.gcalError.slice(0,80))+'</span>':(!S.online?'<span class="status bad">Ei yhteyttä – näytetään viimeisimmät tiedot</span>':""));
   f.innerHTML=h+st;
 }
@@ -1568,7 +1573,7 @@ function whoChips(sel){
   var fam=S.settings.family||[];
   if(!fam.length)return '<p class="hint">Lisää perheenjäsenet asetuksista, niin laput saavat omat värit.</p>';
   return '<div class="chips" id="who"><button type="button" class="chip none" data-who="" aria-pressed="'+(!sel)+'">Kaikki</button>'+
-    fam.map(function(f){return '<button type="button" class="chip" data-who="'+esc(f.name)+'" style="background:var(--'+f.color+')" aria-pressed="'+(sel===f.name)+'">'+esc(f.name)+'</button>';}).join("")+'</div>';
+    fam.map(function(f){return '<button type="button" class="chip" data-who="'+esc(f.name)+'" style="background:'+colVar(f.color)+'" aria-pressed="'+(sel===f.name)+'">'+esc(f.name)+'</button>';}).join("")+'</div>';
 }
 function bindChips(s){var cur=s.querySelector('#who [aria-pressed="true"]'),v=cur?cur.dataset.who:"";
   var cs=s.querySelectorAll("#who .chip");for(var i=0;i<cs.length;i++)(function(c){c.onclick=function(){for(var j=0;j<cs.length;j++)cs[j].setAttribute("aria-pressed","false");c.setAttribute("aria-pressed","true");v=c.dataset.who;};})(cs[i]);
@@ -1760,7 +1765,7 @@ function settingsSheet(){
       s.querySelector("#stopNames").innerHTML=ids.map(function(id){return '<div class="li"><span class="hint" style="min-width:90px">Pysäkki '+esc(id)+'</span><input data-sn="'+esc(id)+'" maxlength="24" placeholder="Nimi, esim. Kotiin päin" value="'+esc(names[id]||"")+'"></div>';}).join("");
       var ins=s.querySelectorAll("[data-sn]");for(var i=0;i<ins.length;i++)ins[i].oninput=function(){names[this.dataset.sn]=this.value.trim();};}
     function draw(){
-      s.querySelector("#famList").innerHTML=fam.map(function(f,i){return '<div class="li"><span class="sw" style="background:var(--'+f.color+');width:24px;height:24px"></span><span class="grow">'+esc(f.name)+'</span><button class="chip none" type="button" data-kid="'+i+'" aria-pressed="'+(!!f.kid)+'">Lapsi</button><button class="btn" type="button" data-rf="'+i+'">Poista</button></div>';}).join("")||'<p class="hint">Ei vielä ketään.</p>';
+      s.querySelector("#famList").innerHTML=fam.map(function(f,i){return '<div class="li"><span class="sw" style="background:'+colVar(f.color)+';width:24px;height:24px"></span><span class="grow">'+esc(f.name)+'</span><button class="chip none" type="button" data-kid="'+i+'" aria-pressed="'+(!!f.kid)+'">Lapsi</button><button class="btn" type="button" data-rf="'+i+'">Poista</button></div>';}).join("")||'<p class="hint">Ei vielä ketään.</p>';
       s.querySelector("#linkList").innerHTML=links.map(function(l,i){return '<div class="li"><span class="grow"><b>'+esc(l.label)+'</b><br><span class="hint">'+esc(l.url)+'</span></span><button class="btn" type="button" data-rl="'+i+'">Poista</button></div>';}).join("")||'<p class="hint">Ei linkkejä.</p>';
       var sw=s.querySelectorAll("#sw .sw");for(var i=0;i<sw.length;i++)sw[i].setAttribute("aria-pressed",String(sw[i].dataset.c===pick));
       var rf=s.querySelectorAll("[data-rf]");for(i=0;i<rf.length;i++)rf[i].onclick=function(){fam.splice(+this.dataset.rf,1);draw();};
@@ -1971,6 +1976,13 @@ function drawNight(){
     $("#nbox").style.transform="translate(calc(-50% + "+Math.round(x)+"px),calc(-50% + "+Math.round(y)+"px))";}
 }
 
+/* An older lists app registered its offline helper for the whole folder, and it stored a copy of every
+   page load and update check. Remove that registration and its cache; the lists app now uses a narrow one. */
+(function(){try{
+  if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations)navigator.serviceWorker.getRegistrations().then(function(rs){
+    rs.forEach(function(r){if(/\/$/.test(r.scope))r.unregister();});}).catch(function(){});
+  if(window.caches&&caches.delete)caches.delete("listat-v1").catch(function(){});
+}catch(e){}})();
 /* ---------- self-update: when a new version is on GitHub, reload at a quiet moment ---------- */
 var UPD={base:null,pending:false};
 function strHash(t){var h=0;for(var i=0;i<t.length;i++){h=(h*31+t.charCodeAt(i))|0;}return h+":"+t.length;}

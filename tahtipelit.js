@@ -14,7 +14,7 @@ var CAT=window.TARRAT||(function(){var all=OLD_STICKERS.map(function(x){return {
     name:function(k){var b=base(k);var x=all.filter(function(y){return y.e===b;})[0];return x?x.n:"";},theme:function(){return "kaikki";},SHINY_CHANCE:0.08};})();
 var STICKERS=CAT.all.map(function(x){return [x.e,x.n];});
 /* sticker element: shiny ones glitter */
-function stHtml(k,cls){return '<span class="'+(cls||"")+(CAT.shiny(k)?" shiny":"")+'">'+CAT.base(k)+'</span>';}
+function stHtml(k,cls){return '<span class="'+(cls||"")+(CAT.shiny(k)?" shiny":"")+'">'+esc(CAT.base(k))+'</span>';}
 function ownedBase(have){var o={};Object.keys(have).forEach(function(k){if(have[k]>0)o[CAT.base(k)]=1;});return o;}
 /* tricks: [emoji, text, count (0 = none), level 1 easy / 2 medium / 3 challenge, own phrase (no "N kertaa")] */
 var TRICKS=[
@@ -212,7 +212,7 @@ function drawKey(have,avoid){
   return x.e+(Math.random()<CAT.SHINY_CHANCE?"*":"");
 }
 function reward(){
-  if(A.pickReward&&A.pickReward()){choose({title:"Valitse palkinto! 🎉",onPick:function(){}});return;}
+  if(A.pickReward&&A.pickReward()){choose({title:"Valitse palkinto! 🎉",game:true,onPick:function(){}});return;}
   var have=A.album(),k=drawKey(have),fresh=!ownedBase(have)[CAT.base(k)];
   A.addSticker(k);reveal(k,fresh,"Sait tarran! 🎉");
 }
@@ -236,7 +236,10 @@ function choose(o){
     '<div class="sg-choose">'+keys.map(function(k){return '<button type="button" class="sg-ch" data-k="'+esc(k)+'">'+stHtml(k)+(own[CAT.base(k)]?"":'<i>uusi</i>')+'</button>';}).join("")+'</div>'+
     '<p class="sg-msg">Napauta sitä, jonka haluat.</p>',false);
   T(function(){A.say((o.why?o.why+". ":"")+"Saat valita yhden tarran!");},300);
+  /* the star is already spent in a game, so closing still gives one of the five */
+  if(o.game)root.querySelector(".sg-x").onclick=function(){var x=b.querySelectorAll(".sg-ch")[rnd(keys.length)];if(x)x.onclick();};
   b.querySelectorAll(".sg-ch").forEach(function(x){x.onclick=function(){
+    if(b.dataset.done)return;b.dataset.done="1";
     var k=x.dataset.k,fresh=!own[CAT.base(k)];
     b.querySelectorAll(".sg-ch").forEach(function(y){if(y!==x)y.classList.add("away");});x.classList.add("picked");
     A.addSticker(k);if(o.onPick)o.onPick(k);A.tone(880,0,.12);
@@ -298,7 +301,7 @@ function book(highlight){
     b.querySelectorAll("[data-pg]").forEach(function(x){x.onclick=function(){page=+x.dataset.pg;try{localStorage.setItem(pk,String(page));}catch(e){}A.tone(660,0,.1);A.say(PAGES[page].n);draw();};});
     place.forEach(function(p,i){if((p.p||0)!==page)return;var el=document.createElement("span");el.className="sg-pl"+(CAT.shiny(p.e)?" shiny":"");el.textContent=CAT.base(p.e);el.style.left=p.x+"%";el.style.top=p.y+"%";el.dataset.i=i;scene.appendChild(el);drag(el,p.e,i);});
     var keys=trayKeys();
-    tray.innerHTML=keys.length?keys.map(function(k){var n=left(k);return '<span class="sg-tr'+(CAT.shiny(k)?" shiny":"")+(n?"":" used")+(k===highlight&&n?" new":"")+'" data-e="'+esc(k)+'">'+CAT.base(k)+(n>1?'<i>'+n+'</i>':"")+'</span>';}).join(""):'<span class="sg-msg">Tarrat saat '+(A.gamesOn===false?"aikuisilta.":"peleistä.")+'</span>';
+    tray.innerHTML=keys.length?keys.map(function(k){var n=left(k);return '<span class="sg-tr'+(CAT.shiny(k)?" shiny":"")+(n?"":" used")+(k===highlight&&n?" new":"")+'" data-e="'+esc(k)+'">'+esc(CAT.base(k))+(n>1?'<i>'+n+'</i>':"")+'</span>';}).join(""):'<span class="sg-msg">Tarrat saat '+(A.gamesOn===false?"aikuisilta.":"peleistä.")+'</span>';
     tray.querySelectorAll(".sg-tr").forEach(function(el){if(left(el.dataset.e))drag(el,el.dataset.e,-1);else el.onclick=function(){A.say(nameOf(el.dataset.e)+" on jo kirjassa.");};});
   }
   /* press and move: a copy follows the finger; let go on the landscape to stick it, back on the tray to take it off */
@@ -315,6 +318,8 @@ function book(highlight){
         if(!moved){A.sOn();A.say((CAT.shiny(e)?"Kiiltotarra: ":"")+nameOf(e));el.classList.remove("wig");void el.offsetWidth;el.classList.add("wig");return;}
         ghost.remove();var r=scene.getBoundingClientRect(),inside=u.clientX>r.left&&u.clientX<r.right&&u.clientY>r.top&&u.clientY<r.bottom;
         var x=Math.round((u.clientX-r.left)/r.width*1000)/10,y=Math.round((u.clientY-r.top)/r.height*1000)/10;
+        var full=idx<0&&place.filter(function(q){return (q.p||0)===page;}).length>=(A.pageMax||60);
+        if(inside&&full){A.sOff();A.say("Tämä sivu on täynnä! Kokeile toista sivua.");draw();return;}
         if(inside){x=Math.max(4,Math.min(96,x));y=Math.max(6,Math.min(94,y));if(idx>=0){place[idx].x=x;place[idx].y=y;}else place.push({e:e,x:x,y:y,p:page});A.tone(880,0,.12);A.tone(1180,.08,.15);}
         else if(idx>=0){place.splice(idx,1);A.sOff();}
         save();draw();

@@ -346,7 +346,8 @@ function configured(){return typeof BACKEND_URL==="string"&&/^https:\/\/script\.
 function key(){return lsGet("familyKey","");}
 function me(){return lsGet("listat.me","");}
 function family(){return Array.isArray(D.settings.family)?D.settings.family:[];}
-function personColor(n){var f=family();for(var i=0;i<f.length;i++)if(f[i].name===n)return "var(--"+f[i].color+")";return "var(--n2)";}
+function personColor(n){var f=family();for(var i=0;i<f.length;i++)if(f[i].name===n)return /^n[1-6]$/.test(f[i].color)?"var(--"+f[i].color+")":"var(--n2)";return "var(--n2)";}
+function safeUrl(u){u=String(u||"").trim();return /^https?:\/\/[^\s"'<>]+$/i.test(u)?u:"";}
 function avatar(n,sm){return '<span class="av'+(sm?" sm":"")+'" style="background:'+personColor(n)+'" title="'+esc(n)+'">'+esc((n||"?").charAt(0).toUpperCase())+'</span>';}
 
 function fromServer(res){
@@ -655,7 +656,7 @@ function wishBody(l){
   if(!its.length)return html+'<div class="empty">Ei vielä mitään. Kirjoita alas toive tai liitä kaupan linkki.</div>';
   html+='<div class="items">'+its.map(function(i){
     var meta=[];if(Number(i.d.prio))meta.push('<span class="stars">'+"★★★".slice(0,Number(i.d.prio))+'</span>');
-    if(i.d.price)meta.push(esc(i.d.price));if(i.d.url)meta.push('<a href="'+esc(i.d.url)+'" target="_blank" rel="noopener">Avaa linkki</a>');if(i.d.note)meta.push(esc(i.d.note));
+    if(i.d.price)meta.push(esc(i.d.price));if(safeUrl(i.d.url))meta.push('<a href="'+esc(safeUrl(i.d.url))+'" target="_blank" rel="noopener">Avaa linkki</a>');if(i.d.note)meta.push(esc(i.d.note));
     var right="";
     if(t==="wish"&&!isOwner){var r=i.d.reservedBy;right=r===me()?'<button class="resv mine" type="button" data-act="reserve" data-id="'+esc(i.id)+'">Varattu sinulle</button>':(r?'<button class="resv other" type="button" disabled>Varattu ('+esc(r)+')</button>':'<button class="resv" type="button" data-act="reserve" data-id="'+esc(i.id)+'">Varaan</button>');}
     else if(t==="gift")right='<button class="ck" type="button" data-act="toggle" data-id="'+esc(i.id)+'" aria-label="Hankittu" style="'+(i.done==="1"?"background:var(--accent);border-color:var(--accent)":"")+'">'+(i.done==="1"?CK.replace('stroke="currentColor"','stroke="currentColor" style="opacity:1"'):CK)+'</button>';
@@ -1001,7 +1002,11 @@ function tplMenu(id){
 var deferredInstall=null;
 window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();deferredInstall=e;if(VIEW.route==="home")renderHome(false);});
 function isStandalone(){return (window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;}
-if("serviceWorker" in navigator&&location.protocol==="https:"){navigator.serviceWorker.register("listat-sw.js").catch(function(){});}
+if("serviceWorker" in navigator&&location.protocol==="https:"){
+  /* scope "./listat": the helper only serves the lists app, never the board or the kid page */
+  navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){if(/\/$/.test(r.scope))r.unregister();});}).catch(function(){});
+  navigator.serviceWorker.register("listat-sw.js",{scope:"./listat"}).catch(function(){});
+}
 
 loadQ();loadCache();render();
 if(configured()&&key()){flush();pull();}

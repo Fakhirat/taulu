@@ -356,6 +356,9 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .kmwho.all{background:none;color:var(--muted);font-weight:400}
 .kmwhos{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 8px 58px}
 .kmwhos .chip{min-height:34px;padding:4px 12px}
+.kmpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(48px,1fr));gap:6px;padding:4px 0 8px}
+.kmpick button{position:relative;border:1px solid var(--line);background:var(--card,#fff);border-radius:12px;font-size:28px;height:48px;line-height:1}
+.kmpick button i{position:absolute;right:2px;bottom:1px;font-style:normal;font-size:11px;font-weight:700;color:var(--muted)}
 .kmsug{display:flex;flex-wrap:wrap;gap:6px}
 .kmsug button{border:1px dashed var(--line);border-radius:999px;background:none;color:var(--ink);padding:6px 12px;min-height:36px;font-size:14px}
 .btn.danger{color:var(--danger);border-color:var(--danger);margin-right:auto}
@@ -746,41 +749,62 @@ function kmCfg(){var x=kmItems().filter(function(y){return y.d.kind==="cfg";})[0
 function kmStars(c){return kmItems().filter(function(x){return x.d.kind==="star"&&(!c||x.d.who===c);});}
 function kmBal(c){return Math.max(0,kmStars(c).reduce(function(a,x){return a+(+x.d.n||0);},0));}
 function kmAlbum(c){return kmItems().filter(function(x){return x.d.kind==="album"&&x.d.who===c;})[0];}
+var KM_STICKERS=[["🦊","Kettu"],["🐻","Karhu"],["🐰","Pupu"],["🦉","Pöllö"],["🐸","Sammakko"],["🦔","Siili"],["🐿️","Orava"],["🦌","Peura"],["🐟","Kala"],["🐞","Leppäkerttu"],
+  ["🦋","Perhonen"],["🐝","Mehiläinen"],["🐧","Pingviini"],["🦁","Leijona"],["🐘","Norsu"],["🦒","Kirahvi"],["🐢","Kilpikonna"],["🐬","Delfiini"],["🦄","Yksisarvinen"],["🐉","Lohikäärme"],
+  ["🚒","Paloauto"],["🚜","Traktori"],["🚀","Raketti"],["🚂","Juna"],["🚁","Helikopteri"],["⛵","Purjevene"],["🌈","Sateenkaari"],["🍓","Mansikka"]];
+var KM_PICK="",KM_WHYV="";
+function kmGifts(c){return kmItems().filter(function(x){return x.d.kind==="sgift"&&(!c||x.d.who===c);});}
 function kmStarHtml(kidsAll){
-  var c=kmCfg().d,on=!!c.games,max=c.max==null?3:+c.max;
-  var h='<span class="flabel">Tähtipelit</span><div class="chips"><button type="button" class="chip none" data-sg="0" aria-pressed="'+!on+'">Pois</button><button type="button" class="chip none" data-sg="1" aria-pressed="'+on+'">Päällä</button></div>'+
-    '<p class="hint">'+(on?"Lapsi saa tähden aamu- ja iltarutiinista ja voi käyttää tähden minipeliin (Tee temppu tai Laskut). Pelin lopuksi hän saa tarran albumiinsa. Tähdet ovat lapsikohtaisia ja näkyvät kaikilla laitteilla.":
-      "Pois päältä lapsi-tila toimii kuten ennenkin: tähtiä kertyy rutiineista, mutta pelejä ei näy. Päälle kytkettynä lapsi voi käyttää tähtiä minipeleihin ja kerätä tarroja.")+'</p>';
-  if(!on)return h;
-  h+='<div class="kmrow" style="border:none"><span class="hint" style="flex:1">Pelikertoja päivässä enintään</span><select id="sgMax" style="width:auto">'+[1,2,3,5,0].map(function(n){return '<option value="'+n+'"'+(n===max?" selected":"")+'>'+(n?n:"ei rajaa")+'</option>';}).join("")+'</select></div>';
-  var tl=c.tricks==null?2:+c.tricks;
-  h+='<div class="kmrow" style="border:none"><span class="hint" style="flex:1">Tee temppu -pelin temput</span><select id="sgTricks" style="width:auto">'+[[1,"Helpot"],[2,"Sekoitus (helppo, keskitaso, haaste)"],[3,"Haastavat"]].map(function(o){return '<option value="'+o[0]+'"'+(o[0]===tl?" selected":"")+'>'+o[1]+'</option>';}).join("")+'</select></div>';
-  if(!kidsAll.length)return h+'<p class="hint">Merkitse asetuksissa perheenjäsen lapseksi, niin voit antaa hänelle tähtiä.</p>';
-  h+='<span class="flabel">Anna tähtiä</span><input id="sgWhy" maxlength="40" placeholder="Syy, jonka lapsi kuulee (vapaaehtoinen)"><div class="kmsug">'+KM_WHY.map(function(w){return '<button type="button" data-why="'+esc(w)+'">'+esc(w)+'</button>';}).join("")+'</div>';
-  h+=kidsAll.map(function(n){return '<div class="kmrow"><span class="kn" style="background:'+colorOf(n)+';padding:4px 12px;border-radius:999px;font-weight:700;color:var(--note-ink)">'+esc(n)+'</span><span class="grow" style="font-size:20px;font-weight:700">⭐ '+kmBal(n)+'</span>'+
-    '<button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="-1" aria-label="Vähennä tähti">−1</button><button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="1">+1 ⭐</button><button class="btn sm primary" type="button" data-give="'+esc(n)+'" data-n="2">+2 ⭐</button></div>'+
-    (function(){var al=kmAlbum(n);if(!al)return "";var cnt=Object.keys(al.d.s||{}).length,pl=(al.d.place||[]).length;
-      return '<div class="kmrow" style="border:none;padding-top:0"><span class="hint" style="flex:1">📒 Tarrakirja: '+cnt+' / 28 tarraa, '+pl+' liimattu</span>'+
-        (pl?'<button class="btn sm" type="button" data-alclear="'+esc(n)+'">Tyhjennä sivut</button>':"")+'<button class="btn sm danger" style="margin-right:0" type="button" data-alreset="'+esc(n)+'">Nollaa tarrakirja</button></div>';})();}).join("");
-  var hist=kmStars().filter(function(x){return x.row.id.indexOf("sb-")!==0;}).sort(function(a,b){return (+b.row.ts||0)-(+a.row.ts||0);}).slice(0,8);
+  var c=kmCfg().d,on=!!c.games,book=on||!!c.book,max=c.max==null?3:+c.max;
+  function sw(id,val,label){return '<span class="flabel">'+label+'</span><div class="chips"><button type="button" class="chip none" data-'+id+'="0" aria-pressed="'+!val+'">Pois</button><button type="button" class="chip none" data-'+id+'="1" aria-pressed="'+val+'">Päällä</button></div>';}
+  var h=sw("sgb",book,"Tarrakirja")+(on?'<p class="hint">Tarrakirja on aina päällä, kun tähtipelit ovat päällä.</p>':
+      '<p class="hint">Lapsi-tilan yläkulmaan tulee 📒-nappi. Lapsi liimaa tarroja neljän maiseman sivuille, ja aikuiset antavat tarroja täältä.</p>')+
+    sw("sg",on,"Tähtipelit")+'<p class="hint">'+(on?"Lapsi saa tähden aamu- ja iltarutiinista ja voi käyttää tähden minipeliin (Tee temppu tai Laskut). Pelin lopuksi hän saa tarran. Tähdet ovat lapsikohtaisia ja näkyvät kaikilla laitteilla.":
+      "Pois päältä tähtiä kertyy rutiineista kuten ennenkin, mutta pelejä ei näy.")+'</p>';
+  if(on){
+    h+='<div class="kmrow" style="border:none"><span class="hint" style="flex:1">Pelikertoja päivässä enintään</span><select id="sgMax" style="width:auto">'+[1,2,3,5,0].map(function(n){return '<option value="'+n+'"'+(n===max?" selected":"")+'>'+(n?n:"ei rajaa")+'</option>';}).join("")+'</select></div>';
+    var tl=c.tricks==null?2:+c.tricks;
+    h+='<div class="kmrow" style="border:none"><span class="hint" style="flex:1">Tee temppu -pelin temput</span><select id="sgTricks" style="width:auto">'+[[1,"Helpot"],[2,"Sekoitus (helppo, keskitaso, haaste)"],[3,"Haastavat"]].map(function(o){return '<option value="'+o[0]+'"'+(o[0]===tl?" selected":"")+'>'+o[1]+'</option>';}).join("")+'</select></div>';
+  }
+  if(!on&&!book)return h;
+  if(!kidsAll.length)return h+'<p class="hint">Merkitse asetuksissa perheenjäsen lapseksi, niin voit antaa hänelle '+(on?"tähtiä ja ":"")+'tarroja.</p>';
+  h+='<span class="flabel">Anna '+(on?"tähtiä tai ":"")+'tarra</span><input id="sgWhy" maxlength="40" placeholder="Syy, jonka lapsi kuulee (vapaaehtoinen)" value="'+esc(KM_WHYV)+'"><div class="kmsug">'+KM_WHY.map(function(w){return '<button type="button" data-why="'+esc(w)+'">'+esc(w)+'</button>';}).join("")+'</div>';
+  h+=kidsAll.map(function(n){
+    var al=kmAlbum(n),have=al&&al.d.s||{},cnt=Object.keys(have).length,pl=al?(al.d.place||[]).length:0,pend=kmGifts(n).length;
+    var r='<div class="kmrow"><span class="kn" style="background:'+colorOf(n)+';padding:4px 12px;border-radius:999px;font-weight:700;color:var(--note-ink)">'+esc(n)+'</span>'+
+      (on?'<span class="grow" style="font-size:20px;font-weight:700">⭐ '+kmBal(n)+'</span><button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="-1" aria-label="Vähennä tähti">−1</button><button class="btn sm" type="button" data-give="'+esc(n)+'" data-n="1">+1 ⭐</button><button class="btn sm primary" type="button" data-give="'+esc(n)+'" data-n="2">+2 ⭐</button>':'<span class="grow"></span>')+
+      '<button class="btn sm'+(on?"":" primary")+'" type="button" data-pick="'+esc(n)+'" aria-expanded="'+(KM_PICK===n)+'">🎁 Tarra</button></div>';
+    if(KM_PICK===n)r+='<div class="kmpick">'+KM_STICKERS.map(function(x){return '<button type="button" data-st="'+x[0]+'" data-for="'+esc(n)+'" title="'+x[1]+'">'+x[0]+(have[x[0]]?'<i>'+have[x[0]]+'</i>':"")+'</button>';}).join("")+'</div><p class="hint" style="margin:0 0 6px">Napauta tarraa, niin se lähtee lapselle. Numero kertoo, montako lapsella jo on.</p>';
+    r+='<div class="kmrow" style="border:none;padding-top:0"><span class="hint" style="flex:1">📒 '+cnt+' / 28 tarraa, '+pl+' liimattu'+(pend?", "+pend+" odottaa avaamista":"")+'</span>'+
+      (pl?'<button class="btn sm" type="button" data-alclear="'+esc(n)+'">Tyhjennä sivut</button>':"")+(al||pend?'<button class="btn sm danger" style="margin-right:0" type="button" data-alreset="'+esc(n)+'">Nollaa tarrakirja</button>':"")+'</div>';
+    return r;}).join("");
+  var hist=(on?kmStars().filter(function(x){return x.row.id.indexOf("sb-")!==0;}):[]).concat(kmGifts()).sort(function(a,b){return (+b.row.ts||0)-(+a.row.ts||0);}).slice(0,8);
   if(hist.length){h+='<span class="flabel">Viimeisimmät</span>'+hist.map(function(x){var d=x.d,dt=pd(d.date||ymd(new Date()));
+    var what=d.kind==="sgift"?"🎁 "+d.e+" "+esc(d.why||"")+' <span class="hint">· näytetään lapselle</span>':
+      (d.n>0?"+":"−")+Math.abs(d.n)+' ⭐ '+esc(d.game?(d.game==="math"?"Laskupeli":"Tee temppu"):d.why||"")+(d.by==="parent"&&d.n>0&&!d.seen?' <span class="hint">· näytetään lapselle</span>':"");
     return '<div class="kall"><span class="hint" style="width:48px">'+dt.getDate()+'.'+(dt.getMonth()+1)+'.</span><span class="kn" style="background:'+colorOf(d.who)+'">'+esc(d.who)+'</span>'+
-      '<span class="grow">'+(d.n>0?"+":"−")+Math.abs(d.n)+' ⭐ '+esc(d.game?(d.game==="math"?"Laskupeli":"Tee temppu"):d.why||"")+(d.by==="parent"&&d.n>0&&!d.seen?' <span class="hint">· näytetään lapselle</span>':"")+'</span>'+
-      '<button class="ked" type="button" data-sdel="'+esc(x.row.id)+'" aria-label="Poista">🗑</button></div>';}).join("");}
+      '<span class="grow">'+what+'</span><button class="ked" type="button" data-sdel="'+esc(x.row.id)+'" aria-label="Poista">🗑</button></div>';}).join("");}
   return h;
 }
 function kmStarBind(s,kidsAll,redraw){
-  s.querySelectorAll("[data-sg]").forEach(function(b){b.onclick=function(){var c=kmCfg();c.d.games=b.dataset.sg==="1";kmSave(c);redraw();};});
+  function setCfg(f){var c=kmCfg();f(c.d);kmSave(c);redraw();}
+  s.querySelectorAll("[data-sg]").forEach(function(b){b.onclick=function(){setCfg(function(d){d.games=b.dataset.sg==="1";});};});
+  s.querySelectorAll("[data-sgb]").forEach(function(b){b.onclick=function(){setCfg(function(d){d.book=b.dataset.sgb==="1";if(!d.book)d.games=false;});};});
   var mx=s.querySelector("#sgMax");if(mx)mx.onchange=function(){var c=kmCfg();c.d.max=+mx.value;kmSave(c);};
   var tk=s.querySelector("#sgTricks");if(tk)tk.onchange=function(){var c=kmCfg();c.d.tricks=+tk.value;kmSave(c);};
-  var why=s.querySelector("#sgWhy");
-  s.querySelectorAll("[data-why]").forEach(function(b){b.onclick=function(){why.value=b.dataset.why;};});
+  var why=s.querySelector("#sgWhy");if(why)why.oninput=function(){KM_WHYV=why.value;};
+  s.querySelectorAll("[data-why]").forEach(function(b){b.onclick=function(){why.value=KM_WHYV=b.dataset.why;};});
   s.querySelectorAll("[data-give]").forEach(function(b){b.onclick=function(){
     var n=+b.dataset.n,w=b.dataset.give;if(n<0&&kmBal(w)<1){toast("Ei vähennettävää");return;}
     var d={kind:"star",who:w,n:n,date:ymd(new Date()),by:"parent",why:n>0?(why&&why.value.trim()):"Aikuinen vähensi",seen:n<0};
-    kmSave({row:{id:newId(),list:KM_LIST,text:"Tähti",done:"",ts:Date.now(),data:"{}"},d:d});toast(n>0?w+": +"+n+" ⭐":w+": −1 ⭐");redraw();};});
+    kmSave({row:{id:newId(),list:KM_LIST,text:"Tähti",done:"",ts:Date.now(),data:"{}"},d:d});if(n>0)KM_WHYV="";toast(n>0?w+": +"+n+" ⭐":w+": −1 ⭐");redraw();};});
+  s.querySelectorAll("[data-pick]").forEach(function(b){b.onclick=function(){KM_PICK=KM_PICK===b.dataset.pick?"":b.dataset.pick;redraw();};});
+  /* a sticker gift waits as its own row until the child opens it on the kid page */
+  s.querySelectorAll("[data-st]").forEach(function(b){b.onclick=function(){var w=b.dataset.for,e=b.dataset.st;
+    kmSave({row:{id:newId(),list:KM_LIST,text:"Tarra",done:"",ts:Date.now(),data:"{}"},d:{kind:"sgift",who:w,e:e,why:why?why.value.trim():"",date:ymd(new Date())}});
+    KM_PICK="";KM_WHYV="";toast(w+": tarra "+e+" lähetetty");redraw();};});
   s.querySelectorAll("[data-alclear]").forEach(function(b){confirmBtn(b,function(){var al=kmAlbum(b.dataset.alclear);if(!al)return;al.d.place=[];kmSave(al);toast("Tarrat irrotettu sivuilta");redraw();});});
-  s.querySelectorAll("[data-alreset]").forEach(function(b){confirmBtn(b,function(){var al=kmAlbum(b.dataset.alreset);if(al)kmDel(al.row.id);toast("Tarrakirja nollattu");redraw();});});
+  s.querySelectorAll("[data-alreset]").forEach(function(b){confirmBtn(b,function(){var w=b.dataset.alreset,al=kmAlbum(w);if(al)kmDel(al.row.id);kmGifts(w).forEach(function(x){kmDel(x.row.id);});toast("Tarrakirja nollattu");redraw();});});
   s.querySelectorAll("[data-sdel]").forEach(function(b){confirmBtn(b,function(){kmDel(b.dataset.sdel);redraw();});});
 }
 function kidModeSheet(tab){
@@ -791,7 +815,7 @@ function kidModeSheet(tab){
     s.classList.add("wide");
     function draw(){
       var html='<h3>🧸 Lapsi-tilan sisältö</h3><p class="hint">Näkyy lapsen omalla sivulla (taulun alareunan 🧸-nappi). Päivän ohjelmaan tulevat taulun tapahtumat, joissa on lapsen nimi tai ei nimeä, ja mukaan-lista tulee Lapsille mukaan -osiosta.</p>'+
-        '<div class="seg" role="group" aria-label="Osio">'+[["aamu","☀️ Aamurutiini"],["ilta","🌙 Iltarutiini"],["count","⏳ Laskurit"],["star","⭐ Tähdet"]].map(function(x){return '<button type="button" data-tab="'+x[0]+'" aria-pressed="'+(tab===x[0])+'">'+x[1]+'</button>';}).join("")+'</div><div class="list">';
+        '<div class="seg" role="group" aria-label="Osio">'+[["aamu","☀️ Aamurutiini"],["ilta","🌙 Iltarutiini"],["count","⏳ Laskurit"],["star","⭐ Tähdet ja tarrat"]].map(function(x){return '<button type="button" data-tab="'+x[0]+'" aria-pressed="'+(tab===x[0])+'">'+x[1]+'</button>';}).join("")+'</div><div class="list">';
       if(tab==="star"){html+=kmStarHtml(kidsAll);}
       else if(tab!=="count"){
         var st=kmSteps(tab).filter(function(x){return kmFor(x,kid);});

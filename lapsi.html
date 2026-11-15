@@ -32,6 +32,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .stars{display:flex;align-items:center;gap:6px;background:var(--card);border-radius:999px;padding:6px 14px 6px 8px;box-shadow:var(--shadow);font-weight:700;font-size:24px;flex:none}
 .stars{border:none;font-family:inherit;color:var(--ink)}
 .stars .st{font-size:30px;display:inline-block}
+.bookb{font-size:30px;padding:6px 12px}
 .stars .play{margin-left:4px;background:var(--grape);color:#fff;border-radius:999px;padding:2px 12px;font-size:18px}
 .gift{position:fixed;inset:0;z-index:25;background:rgba(43,42,76,.35);display:grid;place-items:center}
 .gift div{background:#fff;border-radius:32px;padding:24px 30px;text-align:center;box-shadow:var(--shadow);max-width:90%}
@@ -155,6 +156,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   <div class="top">
     <div class="hello"><h1 id="hi">Hei!</h1><p id="today"></p></div>
     <button class="stars" id="stars" type="button" aria-label="Tähdet"><span class="st">⭐</span><span id="starN">0</span><span class="play" id="starPlay" hidden>Pelaa</span></button>
+    <button class="stars bookb" id="bookBtn" type="button" aria-label="Tarrakirja" hidden>📒</button>
     <button class="gear" id="gear" type="button" aria-label="Aikuisille: pidä pohjassa">
       <span class="ring" id="ring"></span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
@@ -330,7 +332,7 @@ function render(){
     '<div class="col"><div class="card grow" id="rCard"></div></div>'+
     '<div class="col"><div class="card scroll" id="pCard" style="flex:1 1 50%"></div><div class="card scroll" id="mCard" style="flex:1 1 50%"></div></div>';
   drawWeather();drawCount();drawRoutine();drawProgram();drawPack();
-  var on=gamesOn();$("#starPlay").hidden=!on;if(on){loadGames();showGifts();compactStars();}
+  var on=gamesOn(),bk=bookOn();$("#starPlay").hidden=!on;$("#bookBtn").hidden=!bk||on;if(bk){loadGames();showGifts();}if(on)compactStars();
 }
 function drawWeather(){
   var w=kidWeather(),el=$("#wx");if(!el)return;
@@ -376,11 +378,12 @@ function drawRoutine(){
    With games on, each child has own stars in the family sheet: rows of kind "star" (+1 for a routine or from a parent, −1 for a game). */
 function cfg(){var x=rows(KM_LIST).filter(function(y){return y.d.kind==="cfg";})[0];return x?x.d:{};}
 function gamesOn(){return !!cfg().games;}
+function bookOn(){var c=cfg();return !!(c.games||c.book);}
 function starRows(c){return rows(KM_LIST).filter(function(x){return x.d.kind==="star"&&x.d.who===c;});}
 function balance(c){return Math.max(0,starRows(c).reduce(function(a,x){return a+(+x.d.n||0);},0));}
 function playsToday(c){var t=ymd(new Date());return starRows(c).filter(function(x){return x.d.game&&x.d.date===t;}).length;}
 function bumpPill(){$("#starN").textContent=stars();var s=$("#stars");s.classList.remove("pop");void s.offsetWidth;s.classList.add("pop");}
-function gameApi(){var c=child();return {child:c,say:say,sOn:sOn,sOff:sOff,sFanfare:sFanfare,tone:tone,
+function gameApi(){var c=child();return {child:c,gamesOn:gamesOn(),say:say,sOn:sOn,sOff:sOff,sFanfare:sFanfare,tone:tone,
   balance:function(){return balance(c);},plays:function(){return playsToday(c);},max:function(){var m=cfg().max;return m==null?3:+m;},
   spend:function(g){if(balance(c)<1)return false;save({id:newId(),list:KM_LIST,text:"Peli",done:"",ts:Date.now(),data:JSON.stringify({kind:"star",who:c,n:-1,date:ymd(new Date()),game:g,seen:true})});return true;},
   trickLevel:function(){var t=cfg().tricks;return t==null?2:+t;},
@@ -395,13 +398,22 @@ function loadGames(){
   if(window.StarGames||S.gamesLoading)return;S.gamesLoading=true;
   var sc=document.createElement("script");sc.src="tahtipelit.js?v="+Math.floor(Date.now()/36e5);sc.onerror=function(){S.gamesLoading=false;};document.head.appendChild(sc);
 }
+$("#bookBtn").onclick=function(){if(window.StarGames&&child())StarGames.book(gameApi());};
 $("#stars").onclick=function(){
   if(gamesOn()&&window.StarGames&&child()){StarGames.menu(gameApi());return;}
+  if(bookOn()&&window.StarGames&&child()){StarGames.book(gameApi());return;}
   var n=stars();say(n?"Sinulla on "+n+(n===1?" tähti!":" tähteä!"):"Tähdet saat tekemällä tehtävät.");
 };
 /* stars a grown-up gave from the board: shown once with the reason */
 function showGifts(){
-  if(!gamesOn()||S.gift||$(".sg"))return;var c=child();
+  if(!bookOn()||S.gift||$(".sg"))return;var c=child();
+  var sg=rows(KM_LIST).filter(function(x){return x.d.kind==="sgift"&&x.d.who===c;})[0];
+  if(sg&&window.StarGames){S.gift=true;var o2=document.createElement("div");o2.className="gift";var nm=StarGames.nameOf(sg.d.e);
+    o2.innerHTML='<div><span class="e">'+esc(sg.d.e)+'</span><b>Sait tarran!</b>'+(sg.d.why?'<span>'+esc(sg.d.why)+'</span>':"")+'<span style="font-size:18px;margin-top:10px">Napauta, niin pääset liimaamaan sen 📒</span></div>';
+    document.body.appendChild(o2);sFanfare();T0(function(){say("Sait tarran: "+nm+"! "+cleanText(sg.d.why||""));},500);
+    gameApi().addSticker(sg.d.e);S.items=S.items.filter(function(i){return i.id!==sg.row.id;});queue({op:"delete",table:"items",id:sg.row.id});
+    o2.onclick=function(){o2.remove();S.gift=false;StarGames.book(gameApi(),sg.d.e);};return;}
+  if(!gamesOn())return;
   var g=starRows(c).filter(function(x){return x.d.by==="parent"&&x.d.n>0&&!x.d.seen;})[0];if(!g)return;
   S.gift=true;var o=document.createElement("div");o.className="gift";
   o.innerHTML='<div><span class="e">'+(g.d.n>1?"🌟":"⭐")+'</span><b>Sait '+(g.d.n>1?g.d.n+" tähteä":"tähden")+'!</b>'+(g.d.why?'<span>'+esc(g.d.why)+'</span>':"")+'</div>';

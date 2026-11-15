@@ -87,7 +87,7 @@ function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp
 function shell(title,body,inGame){
   clearT();
   if(!root){root=document.createElement("div");root.className="sg";document.body.appendChild(root);}
-  root.innerHTML='<div class="sg-top"><h2>'+title+'</h2><span class="sg-bal">⭐ <span id="sgBal">'+A.balance()+'</span></span><button class="sg-x" type="button" aria-label="Sulje">✕</button></div><div class="sg-body">'+body+'</div>';
+  root.innerHTML='<div class="sg-top"><h2>'+title+'</h2>'+(A.gamesOn===false?"":'<span class="sg-bal">⭐ <span id="sgBal">'+A.balance()+'</span></span>')+'<button class="sg-x" type="button" aria-label="Sulje">✕</button></div><div class="sg-body">'+body+'</div>';
   root.querySelector(".sg-x").onclick=function(){if(inGame)askQuit();else close();};
   return root.querySelector(".sg-body");
 }
@@ -274,7 +274,7 @@ function book(highlight){
     });
   }
   draw();
-  b.querySelector("#sgAll").onclick=album;b.querySelector("#sgBack").onclick=function(){clearTimeout(saveT);if(A.placeSave)A.placeSave(place);menu(A);};
+  b.querySelector("#sgAll").onclick=album;b.querySelector("#sgBack").onclick=function(){clearTimeout(saveT);if(A.placeSave)A.placeSave(place);if(A.gamesOn===false)close();else menu(A);};
   var free=STICKERS.filter(function(s){return have[s[0]]&&left(s[0]);}).length;
   A.say(highlight&&left(highlight)?"Vedä "+nameOf(highlight)+" sormella maisemaan!":free?"Vedä tarroja sormella maisemaan.":Object.keys(have).length?"Tässä on sinun tarrakirjasi.":"Tarrat saat peleistä.");
 }
@@ -290,5 +290,5 @@ function album(){
   A.say(n?"Sinulla on "+n+(n===1?" tarra.":" tarraa."):"Tarrat saat peleistä.");
 }
 
-window.StarGames={menu:menu,stickers:STICKERS.length};
+window.StarGames={menu:menu,book:function(api,hl){A=api;book(hl);},nameOf:nameOf,stickers:STICKERS.length};
 })();

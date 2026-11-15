@@ -167,7 +167,6 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div class="party" id="party" aria-hidden="true"></div>
 <div class="note" id="note" hidden></div>
 <script src="config.js"></script>
-<script src="tarrat.js"></script>
 <script>
 (function(){
 "use strict";
@@ -214,7 +213,7 @@ function note(t,ms){var n=$("#note");n.textContent=t;n.hidden=false;clearTimeout
 var WL=null;
 function wake(){try{if(navigator.wakeLock&&!WL)navigator.wakeLock.request("screen").then(function(l){WL=l;l.addEventListener("release",function(){WL=null;});}).catch(function(){});}catch(e){}}
 document.addEventListener("pointerdown",function(){ac();wake();},{passive:true});
-document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"){wake();load();}else if(window.speechSynthesis)speechSynthesis.cancel();});
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"){wake();if(KQ.length)kqFlush();else load();}else if(window.speechSynthesis)speechSynthesis.cancel();});
 
 /* ---------- data: same backend and family key as the board ---------- */
 function key(){return lsGet("familyKey","");}
@@ -241,11 +240,26 @@ function save(row){
     S.lists=(S.lists||[]).concat([l]);queue({op:"upsert",table:"lists",row:l});}
   queue({op:"upsert",table:"items",row:row});
 }
-function queue(body){
-  if(!ready())return;S.inflight++;
-  S.q=S.q.then(function(){return post(body).then(function(res){S.inflight--;if(!S.inflight&&res.items){apply(res);render();}})
-    .catch(function(){S.inflight=Math.max(0,S.inflight-1);note("Tallennus ei onnistunut. Yritetään myöhemmin uudelleen.");if(!S.inflight)setTimeout(load,4000);});});
+/* changes are queued on the device and sent up to 40 at a time; a dropped connection or a reload loses nothing */
+var KQ=[];try{KQ=JSON.parse(lsGet("lapsi.q","[]"))||[];if(!Array.isArray(KQ))KQ=[];}catch(e){KQ=[];}
+S.inflight=KQ.length;
+function kqSave(){lsSet("lapsi.q",JSON.stringify(KQ));S.inflight=KQ.length;}
+function queue(body){if(!ready())return;delete body.key;KQ.push(body);kqSave();clearTimeout(S.kqT);S.kqT=setTimeout(kqFlush,150);}
+function kqRetry(){S.kqTry=Math.min((S.kqTry||0)+1,6);clearTimeout(S.kqT);S.kqT=setTimeout(kqFlush,Math.min(60000,3000*Math.pow(2,S.kqTry-1)));}
+function kqFlush(){
+  if(S.kqBusy||!KQ.length||!ready())return;
+  S.kqBusy=true;var n=Math.min(KQ.length,40),ops=KQ.slice(0,n);
+  post(n===1?JSON.parse(JSON.stringify(ops[0])):{op:"batch",ops:JSON.parse(JSON.stringify(ops))}).then(function(res){
+    S.kqBusy=false;KQ.splice(0,n);kqSave();S.kqTry=0;S.kqHtml=0;
+    if(KQ.length)kqFlush();else if(res.items){apply(res);render();}
+  }).catch(function(e){
+    S.kqBusy=false;var m=e&&e.message,net=!m||e.name==="TypeError"||m==="busy"||m==="locked"||m==="key";
+    if(m==="html"&&++S.kqHtml<5)net=true;
+    if(!net){S.kqHtml=0;KQ.splice(0,n);kqSave();note("Tallennus ei onnistunut.");if(KQ.length)kqFlush();else load();return;}
+    kqRetry();
+  });
 }
+window.addEventListener("online",function(){S.kqTry=0;kqFlush();});
 (function(){try{var c=JSON.parse(localStorage.getItem("lapsi.cache")||"null");if(c&&c.d){S.items=c.d.items||[];S.events=c.d.events||[];S.gcal=c.d.gcal||[];S.settings=c.d.settings||{};S.lists=c.d.lists||[];S.data=true;}}catch(e){}})();
 
 /* ---------- weather (Open-Meteo, same place as the board) ---------- */
@@ -446,7 +460,9 @@ function gameApi(){var c=child();return {child:c,gamesOn:gamesOn(),say:say,sOn:s
   changed:function(){$("#starN").textContent=stars();}};}
 function loadGames(){
   if(window.StarGames||S.gamesLoading)return;S.gamesLoading=true;
-  var sc=document.createElement("script");sc.src="tahtipelit.js?v="+Math.floor(Date.now()/36e5);sc.onerror=function(){S.gamesLoading=false;};sc.onload=function(){if(child())showGifts();};document.head.appendChild(sc);
+  /* the catalogue first, then the games, each in the version listed in version.json */
+  (UPD.want?Promise.resolve():verFetch()).then(function(){
+    loadHelper("tarrat.js",function(){loadHelper("tahtipelit.js",function(ok){if(!ok){S.gamesLoading=false;return;}if(child())showGifts();});});});
 }
 $("#bookBtn").onclick=function(){if(window.StarGames&&child())StarGames.book(gameApi());};
 $("#stars").onclick=function(){
@@ -586,20 +602,45 @@ function menu(){
     rs.forEach(function(r){if(/\/$/.test(r.scope))r.unregister();});}).catch(function(){});
   if(window.caches&&caches.delete)caches.delete("listat-v1").catch(function(){});
 }catch(e){}})();
-/* self-update: reload when a new version is on GitHub and nobody has touched the page for two minutes */
-var UPD={base:null},lastTouch=Date.now();
-document.addEventListener("pointerdown",function(){lastTouch=Date.now();},true);
-function checkUpdate(){
-  if(!/^https?:$/.test(location.protocol))return;
-  fetch(location.pathname+"?u="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():null;}).then(function(t){
-    if(!t||t.indexOf("<html")<0)return;var h=0;for(var i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))|0;h=h+":"+t.length;
-    if(UPD.base===null){UPD.base=h;return;}
-    if(h!==UPD.base)(function retry(){if(S.inflight||$(".ov")||$(".sg")||Date.now()-lastTouch<120000){setTimeout(retry,60000);return;}location.reload();})();
-  }).catch(function(){});
+/* ---------- self-update ----------
+   version.json lists a version for each file. A page reloads at a quiet moment when its own file, or a helper file
+   it uses, has another version there. Helper files are loaded with ?v=<version>, so an old cached copy is skipped.
+   When a file changes: change its version (APP_VER, or ver in the helper file) and the same value in version.json. */
+var APP_VER="2026-11-15d";
+var UPD={want:null,pending:false};
+function verFetch(){
+  if(!/^https?:$/.test(location.protocol))return Promise.resolve(null);
+  return fetch("version.json?u="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null;})
+    .then(function(j){if(j&&typeof j==="object")UPD.want=j;return UPD.want;}).catch(function(){return UPD.want;});
 }
-setTimeout(checkUpdate,5000);setInterval(checkUpdate,10*60000);
+function verMine(){return {"lapsi.html":APP_VER,"tarrat.js":window.TARRAT&&TARRAT.ver,"tahtipelit.js":window.StarGames&&StarGames.ver};}
+function loadHelper(f,cb){
+  var s=document.createElement("script");s.src=f+"?v="+encodeURIComponent((UPD.want&&UPD.want[f])||APP_VER);
+  s.onload=function(){if(cb)cb(true);};s.onerror=function(){if(cb)cb(false);};document.head.appendChild(s);
+}
+function updTry(){try{return JSON.parse(localStorage.getItem("upd.try.lapsi")||"{}")||{};}catch(e){return {};}}
+function checkUpdate(){
+  verFetch().then(function(j){
+    if(!j)return;var mine=verMine(),diff=Object.keys(mine).filter(function(f){return mine[f]&&j[f]&&j[f]!==mine[f];});
+    if(!diff.length){UPD.pending=false;UPD.stuck="";return;}
+    /* GitHub may serve the old file for about 10 minutes: at most 3 reloads per new version, then a 30 minute pause */
+    var sig=diff.map(function(f){return f+"="+j[f];}).join(","),t=updTry();
+    if(t.sig===sig&&t.n>=3&&Date.now()-(t.at||0)<30*60000){UPD.stuck=sig;return;}
+    UPD.pending=true;UPD.sig=sig;UPD.n=t.sig===sig&&Date.now()-(t.at||0)<30*60000?t.n:0;tryReload();
+  });
+}
+function tryReload(){
+  if(!UPD.pending)return;
+  if(S.inflight||$(".ov")||$(".sg")||Date.now()-lastTouch<120000){clearTimeout(UPD.t);UPD.t=setTimeout(tryReload,60000);return;}
+  try{localStorage.setItem("upd.try.lapsi",JSON.stringify({sig:UPD.sig,n:(UPD.n||0)+1,at:Date.now()}));}catch(e){}
+  location.reload();
+}
+var lastTouch=Date.now();
+document.addEventListener("pointerdown",function(){lastTouch=Date.now();},true);
+setTimeout(checkUpdate,8000);setInterval(checkUpdate,10*60000);
 render();load();loadWeather();
-setInterval(function(){if(!S.inflight)load();loadWeather();},5*60000);
+setInterval(function(){if(KQ.length)kqFlush();else load();loadWeather();},5*60000);
+if(KQ.length)setTimeout(kqFlush,500);
 /* redraw each minute so greeting, routine and "tomorrow" switch at the right time */
 var lastMin="";setInterval(function(){var d=new Date(),m=d.getHours()+":"+(d.getMinutes()<30?0:1);if(m!==lastMin&&!S.inflight&&!$(".ov")&&!$(".sg")){lastMin=m;render();}},60000);
 })();

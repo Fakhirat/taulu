@@ -9,7 +9,6 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <!-- Apps Script -osoite on tiedostossa config.js (yhteinen ilmoitustaululle ja listoille) -->
 <script src="config.js"></script>
-<script src="tarrat.js"></script>
 <script>if(typeof BACKEND_URL==="undefined")var BACKEND_URL="";</script>
 <style>
 /* Layout: wall-board kiosk — clock + weather band, then week | notes | bus departures, quick links as footer. */
@@ -575,17 +574,37 @@ function send(body){
     .then(function(r){S.lastErr="";renderFoot();return r;})
     .catch(function(e){report(e);throw e;});
 }
-/* List actions update the screen at once and are sent one after another in the background.
-   Server replies are applied only when nothing is still waiting, so quick taps don't flicker back. */
+/* List and kid actions update the screen at once and are sent in the background, up to 40 at a time.
+   The queue is kept on the device, so a dropped connection or a reload does not lose anything.
+   A change the backend refuses (e.g. too long) is dropped and reported; connection problems are retried. */
+var BQ=[];try{BQ=JSON.parse(lsGet("taulu.q","[]"))||[];if(!Array.isArray(BQ))BQ=[];}catch(e){BQ=[];}
+S.inflight=BQ.length;
+function bqSave(){lsSet("taulu.q",JSON.stringify(BQ));S.inflight=BQ.length;}
 function sendQ(body){
   if(!configured()||!key()){toast("Taustapalvelu puuttuu tai avain on syöttämättä.",6000);return;}
-  S.inflight++;body.key=key();
-  S.q=(S.q||Promise.resolve()).then(function(){
-    return fetch(BACKEND_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)})
-      .then(parseResp).then(function(res){S.inflight--;if(!res||res.ok===false)throw new Error(res&&res.error||"virhe");if(!S.inflight)handle(res);})
-      .catch(function(e){S.inflight=Math.max(0,S.inflight-1);report(e);if(!S.inflight)load();});
+  delete body.key;BQ.push(body);bqSave();clearTimeout(S.bqT);S.bqT=setTimeout(bqFlush,150);
+}
+function bqRetry(){S.bqTry=Math.min((S.bqTry||0)+1,6);clearTimeout(S.bqT);S.bqT=setTimeout(bqFlush,Math.min(60000,3000*Math.pow(2,S.bqTry-1)));}
+function bqFlush(){
+  if(S.bqBusy||!BQ.length||!configured()||!key())return;
+  S.bqBusy=true;var n=Math.min(BQ.length,40),ops=BQ.slice(0,n);
+  rawPost(n===1?JSON.parse(JSON.stringify(ops[0])):{op:"batch",ops:JSON.parse(JSON.stringify(ops))}).then(function(res){
+    S.bqBusy=false;
+    if(!res||res.ok===false){var m=res&&res.error||"virhe";
+      if(m==="busy"||m==="locked"){S.lastErr=explain(new Error(m));renderFoot();bqRetry();return;}
+      if(m==="key"){askKey(true);bqRetry();return;}
+      BQ.splice(0,n);bqSave();report(new Error(m));if(BQ.length)bqFlush();else load();return;}
+    BQ.splice(0,n);bqSave();S.bqTry=0;S.bqHtml=0;
+    if(BQ.length)bqFlush();else{handle(res);if(S.lastErr){S.lastErr="";renderFoot();}}
+  }).catch(function(e){
+    S.bqBusy=false;var m=e&&e.message;
+    if(m==="login"||m==="nocode"){report(e);bqRetry();return;}
+    /* the same change failing with a server error page again and again is given up after 5 tries */
+    if(m==="html"&&++S.bqHtml>=5){S.bqHtml=0;BQ.splice(0,n);bqSave();report(e);if(BQ.length)bqFlush();else load();return;}
+    S.lastErr="Ei yhteyttä · "+BQ.length+(BQ.length===1?" muutos odottaa":" muutosta odottaa");renderFoot();bqRetry();
   });
 }
+window.addEventListener("online",function(){S.bqTry=0;bqFlush();});
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 
 /* ---------- "Lapsille mukaan": per-child reminders + clothing hint from the forecast ----------
@@ -1762,6 +1781,7 @@ function settingsSheet(){
      '<div class="chips" id="layTop"><span class="hint" style="align-self:center">Keskellä ylempänä:</span></div>'+
      '<div class="chips" id="layShow"></div><p class="hint">Muutos näkyy heti ja koskee vain tätä laitetta.</p></div>'+
    '<div class="field"><span class="flabel">Lapsi-tila</span><div class="chips"><button class="btn" type="button" id="kmEdit">🧸 Muokkaa lapsi-tilan sisältöä</button></div><p class="hint">Rutiinit ja laskurit. Päivän ohjelmaan tulevat tapahtumat, joissa kenen-kohtana on lapsi, ja Lapsille mukaan -asiat.</p></div>'+
+   '<p class="hint" style="margin:0 0 4px">Versio '+APP_VER+(window.TARRAT&&TARRAT.ver?" · tarrat "+esc(TARRAT.ver):"")+" · taustapalvelu "+(S.api>=2?"v"+S.api:"vanha")+(UPD.stuck?' · <b>päivitys odottaa: '+esc(UPD.stuck)+'</b>':"")+'</p>'+
    '<div class="field"><span class="flabel">Yötila tällä laitteella</span><div class="chips" id="nMode"></div>'+
      '<div class="chips" id="nTime" style="align-items:center"></div>'+
      '<p class="hint">Yöllä taulu vaihtuu mustaksi, himmeäksi kelloksi, jossa näkyy myös seuraavan päivän ensimmäiset menot. Kosketus tuo taulun värit takaisin kahdeksi minuutiksi. Musta näyttö piilottaa kellonkin ja antaa padin näytön sammua padin omien asetusten mukaan.</p></div>'+
@@ -1776,7 +1796,7 @@ function settingsSheet(){
       s.querySelector("#famList").innerHTML=fam.map(function(f,i){return '<div class="li"><span class="sw" style="background:'+colVar(f.color)+';width:24px;height:24px"></span><span class="grow">'+esc(f.name)+'</span><button class="chip none" type="button" data-kid="'+i+'" aria-pressed="'+(!!f.kid)+'">Lapsi</button><button class="btn" type="button" data-rf="'+i+'">Poista</button></div>';}).join("")||'<p class="hint">Ei vielä ketään.</p>';
       s.querySelector("#linkList").innerHTML=links.map(function(l,i){return '<div class="li"><span class="grow"><b>'+esc(l.label)+'</b><br><span class="hint">'+esc(l.url)+'</span></span><button class="btn" type="button" data-rl="'+i+'">Poista</button></div>';}).join("")||'<p class="hint">Ei linkkejä.</p>';
       var sw=s.querySelectorAll("#sw .sw");for(var i=0;i<sw.length;i++)sw[i].setAttribute("aria-pressed",String(sw[i].dataset.c===pick));
-      var rf=s.querySelectorAll("[data-rf]");for(i=0;i<rf.length;i++)rf[i].onclick=function(){fam.splice(+this.dataset.rf,1);draw();};
+      var rf=s.querySelectorAll("[data-rf]");for(i=0;i<rf.length;i++)(function(b){confirmBtn(b,function(){fam.splice(+b.dataset.rf,1);draw();});})(rf[i]);
       var kf=s.querySelectorAll("[data-kid]");for(i=0;i<kf.length;i++)kf[i].onclick=function(){var f=fam[+this.dataset.kid];f.kid=!f.kid;draw();};
       var rl=s.querySelectorAll("[data-rl]");for(i=0;i<rl.length;i++)rl[i].onclick=function(){links.splice(+this.dataset.rl,1);draw();};
     }
@@ -1991,21 +2011,37 @@ function drawNight(){
     rs.forEach(function(r){if(/\/$/.test(r.scope))r.unregister();});}).catch(function(){});
   if(window.caches&&caches.delete)caches.delete("listat-v1").catch(function(){});
 }catch(e){}})();
-/* ---------- self-update: when a new version is on GitHub, reload at a quiet moment ---------- */
-var UPD={base:null,pending:false};
-function strHash(t){var h=0;for(var i=0;i<t.length;i++){h=(h*31+t.charCodeAt(i))|0;}return h+":"+t.length;}
+/* ---------- self-update ----------
+   version.json lists a version for each file. A page reloads at a quiet moment when its own file, or a helper file
+   it uses, has another version there. Helper files are loaded with ?v=<version>, so an old cached copy is skipped.
+   When a file changes: change its version (APP_VER, or ver in the helper file) and the same value in version.json. */
+var APP_VER="2026-11-15d";
+var UPD={want:null,pending:false};
+function verFetch(){
+  if(!/^https?:$/.test(location.protocol))return Promise.resolve(null);
+  return fetch("version.json?u="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():null;})
+    .then(function(j){if(j&&typeof j==="object")UPD.want=j;return UPD.want;}).catch(function(){return UPD.want;});
+}
+function verMine(){return {"index.html":APP_VER,"tarrat.js":window.TARRAT&&TARRAT.ver};}
+function loadHelper(f,cb){
+  var s=document.createElement("script");s.src=f+"?v="+encodeURIComponent((UPD.want&&UPD.want[f])||APP_VER);
+  s.onload=function(){if(cb)cb(true);};s.onerror=function(){if(cb)cb(false);};document.head.appendChild(s);
+}
+function updTry(){try{return JSON.parse(localStorage.getItem("upd.try.index")||"{}")||{};}catch(e){return {};}}
 function checkUpdate(){
-  if(!/^https?:$/.test(location.protocol))return;
-  fetch(location.pathname+"?u="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():null;}).then(function(t){
-    if(!t||t.indexOf("<html")<0)return;var h=strHash(t);
-    if(UPD.base===null){UPD.base=h;return;}
-    if(h!==UPD.base){UPD.pending=true;tryReload();}
-  }).catch(function(){});
+  verFetch().then(function(j){
+    if(!j)return;var mine=verMine(),diff=Object.keys(mine).filter(function(f){return mine[f]&&j[f]&&j[f]!==mine[f];});
+    if(!diff.length){UPD.pending=false;UPD.stuck="";return;}
+    /* GitHub may serve the old file for about 10 minutes: at most 3 reloads per new version, then a 30 minute pause */
+    var sig=diff.map(function(f){return f+"="+j[f];}).join(","),t=updTry();
+    if(t.sig===sig&&t.n>=3&&Date.now()-(t.at||0)<30*60000){UPD.stuck=sig;return;}
+    UPD.pending=true;UPD.sig=sig;UPD.n=t.sig===sig&&Date.now()-(t.at||0)<30*60000?t.n:0;tryReload();
+  });
 }
 function tryReload(){
   if(!UPD.pending)return;
-  var busy=S.inflight||!$("#overlay").hidden||S.listOpen||(!S.night&&Date.now()-S.lastTouch<120000);
-  if(busy){clearTimeout(UPD.t);UPD.t=setTimeout(tryReload,60000);return;}
+  if(S.inflight||!$("#overlay").hidden||S.listOpen||(!S.night&&Date.now()-S.lastTouch<120000)){clearTimeout(UPD.t);UPD.t=setTimeout(tryReload,60000);return;}
+  try{localStorage.setItem("upd.try.index",JSON.stringify({sig:UPD.sig,n:(UPD.n||0)+1,at:Date.now()}));}catch(e){}
   lsSet("updAt",String(Date.now()));if(document.fullscreenElement)lsSet("reFull","1");
   location.reload();
 }
@@ -2022,7 +2058,7 @@ $("#kiosk").onclick=function(){
 /* after a self-update the first tap returns to full screen (browsers only allow it from a tap) */
 document.addEventListener("click",function(){if(lsGet("reFull","")==="1"&&!document.fullscreenElement){lsSet("reFull","");var de=document.documentElement;if(de.requestFullscreen)de.requestFullscreen().catch(function(){});}},true);
 document.addEventListener("visibilitychange",function(){
-  if(document.visibilityState==="visible"){if(S.kiosk&&!(S.night&&nightPrefs().mode==="black"))wake();load();if(!S.night)loadBus();checkUpdate();if(Date.now()-(S.weatherTime||0)>10*60000)loadWeather();}
+  if(document.visibilityState==="visible"){if(S.kiosk&&!(S.night&&nightPrefs().mode==="black"))wake();if(BQ.length)bqFlush();else load();if(!S.night)loadBus();checkUpdate();if(Date.now()-(S.weatherTime||0)>10*60000)loadWeather();}
 });
 /* any tap re-arms the wake lock (browsers require a gesture) */
 document.addEventListener("click",function(){if(S.kiosk)wake();},true);
@@ -2031,16 +2067,19 @@ if(Date.now()-(+lsGet("updAt","0")||0)<60000){lsSet("updAt","");S.lastTouch=0;}
 
 /* ---------- start ---------- */
 applyLayout();applyTheme();applyBg();tick();renderAll();
+/* sticker catalogue for the kid-mode editor, in its current version */
+verFetch().then(function(){loadHelper("tarrat.js",function(ok){if(ok&&!$("#overlay").hidden&&S.kmRedraw)S.kmRedraw();});});
 setInterval(tick,1000);
 loadWeather();
 if(!configured()){renderFoot();}
 else if(!key()){askKey();}
 else{load().then(function(){loadBus();loadWeather();if(location.hash==='#listat')listsSheet();});}
 if(!configured())loadBus();
-setInterval(function(){if(document.visibilityState==="visible")load();},30000);
+setInterval(function(){if(document.visibilityState!=="visible")return;if(BQ.length)bqFlush();else load();},30000);
+if(BQ.length)setTimeout(bqFlush,500);
 setInterval(function(){if(document.visibilityState==="visible"&&!S.night)loadBus();},30000);
 setInterval(function(){if(document.visibilityState==="visible")checkUpdate();},10*60000);
-setTimeout(checkUpdate,5000);
+setTimeout(checkUpdate,8000);
 setInterval(function(){if(document.visibilityState==="visible")loadWeather();},15*60000);
 })();
 </script>

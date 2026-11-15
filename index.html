@@ -522,6 +522,8 @@ function handle(res){
     if(res&&res.error==="key"){askKey(true);}
     throw new Error(res&&res.error||"virhe");
   }
+  S.api=+res.api||1;
+  if(res.failed&&res.failed.length)toast("Osa muutoksista ei tallentunut ("+res.failed.length+").",6000);
   S.notes=res.notes||[];S.events=res.events||[];S.lists=res.lists||[];S.items=res.items||[];S.gcal=Array.isArray(res.gcal)?res.gcal:[];S.gcalError=res.gcalError||"";
   var st=res.settings||{};S.settings=clone(DEFAULTS);for(var k in st)S.settings[k]=st[k];
   S.loaded=true;S.online=true;
@@ -543,6 +545,12 @@ function parseResp(r){
 function explain(e){
   var m=e&&e.message;
   if(m==="key")return "Väärä perheen avain. Tarkista, että se on sama kuin Code.gs-tiedostossa.";
+  if(m==="setup")return "Perheen avain on Code.gs:ssä vaihtamatta tai alle 12 merkkiä. Vaihda se ja tee uusi versio.";
+  if(m==="locked")return "Liian monta väärää avainta. Taustapalvelu on lukittu noin 10 minuutiksi.";
+  if(m==="busy")return "Taustapalvelu oli kiireinen. Yritä hetken päästä uudelleen.";
+  if(m==="toolong")return "Tietoa on liikaa yhteen tallennukseen.";
+  if(m==="big")return "Kuva on liian suuri.";
+
   if(m==="login")return "Taustapalvelu vaatii kirjautumisen. Vaihda Apps Scriptin käyttöönotossa ”Kuka voi käyttää” → Kuka tahansa ja tee uusi versio.";
   if(m==="nocode")return "Taustapalvelusta puuttuu koodi. Tallenna Code.gs editorissa ja tee uusi käyttöönotto (Hallinnoi käyttöönottoja → Muokkaa → Uusi versio).";
   if(m==="html")return "Taustapalvelu antoi virheen: "+(e.detail||"tuntematon");
@@ -740,7 +748,7 @@ function kmSteps(r){return kmItems().filter(function(x){return x.d.kind==="step"
 function kmFor(x,kid){var w=x.d.who;return !kid||!w||!w.length||w.indexOf(kid)>=0;}
 function kmWhoTxt(x){var w=x.d.who;return w&&w.length?w.join(", "):"Kaikille";}
 function kmEnsureList(){if(!(S.lists||[]).some(function(l){return l.id===KM_LIST;})){var l={id:KM_LIST,name:"Lapsi-tila",ts:Date.now(),type:"kmode",data:"{}"};S.lists.push(l);sendQ({op:"upsert",table:"lists",row:l});}}
-function kmSave(it){if(it.d.__bad){toast("Riviä ei voi tallentaa: tieto on vioittunut.");return;}var js=JSON.stringify(it.d);if(js.length>3900){toast("Tietoa on liikaa tallennettavaksi.",6000);return;}it.row.data=js;kmEnsureList();if(S.items.indexOf(it.row)<0)S.items.push(it.row);sendQ({op:"upsert",table:"items",row:it.row});}
+function kmSave(it){if(it.d.__bad){toast("Riviä ei voi tallentaa: tieto on vioittunut.");return;}var js=JSON.stringify(it.d);if(js.length>(S.api>=2?40000:3900)){toast("Tietoa on liikaa tallennettavaksi.",6000);return;}it.row.data=js;kmEnsureList();if(S.items.indexOf(it.row)<0)S.items.push(it.row);sendQ({op:"upsert",table:"items",row:it.row});}
 function kmDel(id){S.items=S.items.filter(function(i){return i.id!==id;});sendQ({op:"delete",table:"items",id:id});}
 /* Default routines get fixed ids, so the board and the kid page can both create them without duplicates. */
 function kmDefaults(){

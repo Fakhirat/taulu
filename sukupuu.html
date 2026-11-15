@@ -744,7 +744,7 @@ function api(body){
     .then(function(r){return r.text();})
     .then(function(t){var j;try{j=JSON.parse(t);}catch(e){throw new Error("html");}if(!j||j.ok===false)throw new Error(j&&j.error||"virhe");return j;});
 }
-function errText(e){var m=e&&e.message;if(m==="key")return "Perheen avain ei kelpaa.";if(m==="html")return "Taustapalvelu ei vastaa oikein. Onko Code.gs päivitetty?";if(m==="op")return "Code.gs on vanha versio. Päivitä se.";return "Ei yhteyttä. Peli toimii silti tällä laitteella.";}
+function errText(e){var m=e&&e.message;if(m==="key")return "Perheen avain ei kelpaa.";if(m==="locked")return "Liian monta väärää avainta. Yritä 10 minuutin päästä.";if(m==="setup")return "Perheen avain pitää vaihtaa Code.gs:ssä pidemmäksi.";if(m==="big")return "Kuva on liian suuri.";if(m==="html")return "Taustapalvelu ei vastaa oikein. Onko Code.gs päivitetty?";if(m==="op")return "Code.gs on vanha versio. Päivitä se.";return "Ei yhteyttä. Peli toimii silti tällä laitteella.";}
 
 /* photo cache: Drive photos are kept on the device so the game also works offline */
 var PKEY="sukupuu.photos",PHOTOS={},PLOAD={};

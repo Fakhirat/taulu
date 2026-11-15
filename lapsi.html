@@ -222,14 +222,14 @@ function ready(){return /^https:\/\/script\.google\.com\//.test(BACKEND)&&!!key(
 function post(body){body.key=key();return fetch(BACKEND,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)})
   .then(function(r){return r.text();}).then(function(t){var j;try{j=JSON.parse(t);}catch(e){throw new Error("html");}if(!j||j.ok===false)throw new Error(j&&j.error||"virhe");return j;});}
 function apply(res){
-  S.items=res.items||[];repairAlbums();S.events=res.events||[];S.gcal=Array.isArray(res.gcal)?res.gcal:[];S.settings=res.settings||{};S.lists=res.lists||[];
+  S.items=res.items||[];S.api=+res.api||1;DATA_MAX=S.api>=2?40000:3900;repairAlbums();S.events=res.events||[];S.gcal=Array.isArray(res.gcal)?res.gcal:[];S.settings=res.settings||{};S.lists=res.lists||[];
   try{localStorage.setItem("lapsi.cache",JSON.stringify({t:Date.now(),d:{items:S.items,events:S.events,gcal:S.gcal,settings:S.settings,lists:S.lists}}));}catch(e){}
   S.data=true;
 }
 function load(){
   if(!ready()||S.inflight)return Promise.resolve();
   return post({op:"get"}).then(function(r){if(!S.inflight){apply(r);S.err="";render();loadWeather();}})
-    .catch(function(e){S.err=e&&e.message==="key"?"key":"net";if(!S.data)render();});
+    .catch(function(e){var m=e&&e.message;S.err=m==="key"||m==="setup"||m==="locked"?m:"net";if(!S.data)render();});
 }
 /* changes show at once and are sent one after another */
 function save(row){
@@ -323,7 +323,7 @@ function render(){
   $("#starN").textContent=stars();
   if(!/^https:\/\/script\.google\.com\//.test(BACKEND)||!key()){
     grid.innerHTML='<div class="msg" style="grid-column:1/-1"><div class="box"><h2>Lapsi-tila ei ole vielä käytössä</h2><p>Avaa ensin ilmoitustaulu tällä laitteella ja syötä perheen avain. Sen jälkeen lapsi-tila toimii.</p><a class="big" href="index.html">Avaa ilmoitustaulu</a></div></div>';return;}
-  if(!S.data){grid.innerHTML='<div class="msg" style="grid-column:1/-1"><div class="box"><h2>'+(S.err?"Ei yhteyttä 😕":"Hetki…")+'</h2><p>'+(S.err==="key"?"Perheen avain ei kelpaa. Avaa ilmoitustaulu ja syötä avain uudelleen.":S.err?"Tarkista nettiyhteys.":"Haetaan päivän juttuja.")+'</p></div></div>';return;}
+  if(!S.data){grid.innerHTML='<div class="msg" style="grid-column:1/-1"><div class="box"><h2>'+(S.err?"Ei yhteyttä 😕":"Hetki…")+'</h2><p>'+(S.err==="key"?"Perheen avain ei kelpaa. Avaa ilmoitustaulu ja syötä avain uudelleen.":S.err==="locked"?"Taustapalvelu on lukittu hetkeksi. Yritä 10 minuutin päästä.":S.err==="setup"?"Perheen avain pitää vaihtaa Code.gs:ssä pidemmäksi.":S.err?"Tarkista nettiyhteys.":"Haetaan päivän juttuja.")+'</p></div></div>';return;}
   if(!c){
     var ks=kids();
     grid.innerHTML='<div class="msg" style="grid-column:1/-1"><div class="box"><h2>Kuka sinä olet?</h2>'+(ks.length?'<div class="who">'+ks.map(function(n){var m=family().filter(function(x){return x.name===n;})[0];

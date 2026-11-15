@@ -392,6 +392,8 @@ function errText(e){
   var m=e&&e.message;
   if(m==="key")return "Väärä perheen avain";
   if(m==="login")return "Taustapalvelu vaatii kirjautumisen";
+  if(m==="setup")return "Perheen avain on Code.gs:ssä liian lyhyt";
+  if(m==="locked")return "Lukittu hetkeksi: liian monta väärää avainta";
   return "";
 }
 function flush(){
@@ -402,8 +404,11 @@ function flush(){
     SYNC.flushing=false;
     if(!res||res.ok===false){var er=new Error(res&&res.error||"virhe");throw er;}
     Q.splice(0,batch.length);saveQ();SYNC.retry=0;
+    /* changes the backend refused (too long, unknown) are not retried forever */
+    if(res.failed&&res.failed.length){SYNC.failedN=(SYNC.failedN||0)+res.failed.length;}
     if(Q.length){flush();return;}
-    fromServer(res);saveCache();SYNC.last=Date.now();setSync("ok");refresh();
+    fromServer(res);saveCache();SYNC.last=Date.now();
+    if(SYNC.failedN){setSync("error",SYNC.failedN+" muutosta ei tallentunut");SYNC.failedN=0;}else setSync("ok");refresh();
   }).catch(function(e){
     SYNC.flushing=false;
     var t=errText(e);
